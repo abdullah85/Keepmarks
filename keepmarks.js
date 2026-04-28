@@ -1347,7 +1347,10 @@ function onChange(key, value) {
 	var input = document.getElementById('options_' + key);
 	if (input) {
 		var isDefault = value == (theme.hasOwnProperty(key) ? theme[key] : config[key]);
-		input.reset.style.visibility = (isDefault ? 'hidden' : null);
+    if(input && input.reset && input.reset.style) {
+		  input.reset.style.visibility = (isDefault ? 'hidden' : null);
+    }
+
 		if (input.swatch)
 			input.swatch.value = value;
 	}
