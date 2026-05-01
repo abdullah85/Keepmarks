@@ -7,6 +7,7 @@ function render(node, target) {
 	var li = document.createElement('li');
 	var a = document.createElement('a');
 
+  a.dataset.id = node.id;
 	var url = node.url;
 	if (url)
 		a.href = url;
@@ -72,8 +73,10 @@ function render(node, target) {
 		addFolderHandlers(node, a);
 		enableDragFolder(node, a);
 
-	} else if (node.id == 'apps')
-		enableDragFolder(node, a);
+	} else { // A single bookmark
+    addBookmarkHandlers(node, a);
+    enableDragBookmark(node, a);
+  }
 
 	target.appendChild(li);
 	return li;
@@ -108,7 +111,6 @@ function renderColumn(index, target) {
 	if (ids.length == 1 && !getConfig('show_root'))
 		getChildrenFunction({id: ids[0]})(function(result) {
 			renderAll(result, target);
-			addColumnHandlers(index, target);
 		});
 	else if (ids.length > 0) {
 		var i = 0;
@@ -123,7 +125,6 @@ function renderColumn(index, target) {
 			else {
 				// render node list
 				renderAll(nodes, target, true);
-				addColumnHandlers(index, target);
 			}
 		};
 		getSubTree(ids[i], callback);
@@ -143,14 +144,62 @@ function renderColumns() {
 		column.className = 'column';
 		column.style.width = (1 / columns.length) * 100 + '%';
 
-		// enable drag and drop
-		enableDragColumn(i, column);
-
 		target.appendChild(column);
 		renderColumn(i, column);
 	}
 
 	enableDragDrop();
+}
+
+function editBookmark(id, a) {
+  var modalToggle = document.getElementById('modal-toggle');
+  var elem = document.querySelector('[data-id="'+id+'"]');
+  // Ideally, elem will be set correctly for the bookmark
+  if (!elem) return;
+  var name = document.getElementById('edit_bookmark_name');  
+  name.value = elem.innerText;
+  name.dataset.id = id;
+  var url  = document.getElementById('edit_bookmark_url');
+  url.value = a.href;
+  modalToggle.checked = true;
+}
+
+function deleteBookmark(id, a){
+  chrome.bookmarks.remove(id, (res) => {
+    loadColumns();
+  });
+}
+// enables click and context menu for given Bookmark
+function addBookmarkHandlers(node, a) {
+	// context menu handler
+	var items = [];
+    items.push({
+			label: 'Open Bookmark Link',
+			action: function() {
+				openLink({ url: a.href}, 2);
+			}
+		});
+	
+    items.push({
+			label: 'Edit bookmark',
+			action: function() {
+				editBookmark(node.id, a);
+			}
+		});
+
+		items.push(null);// spacer
+
+    items.push({
+			label: 'Delete bookmark',
+			action: function() {
+        deleteBookmark(node.id, a);
+			}
+		});
+
+    a.oncontextmenu = function(event) {
+		renderMenu(items, event.pageX, event.pageY);
+		return false;
+  };
 }
 
 // enables click and context menu for given folder
@@ -161,14 +210,14 @@ function addFolderHandlers(node, a) {
 		return false;
 	};
 
-	// context menu handler
+  // context menu handler
 	var items = getMenuItems(node);
 
 	// column layout items
 	if (!getConfig('lock')) {
 		items.push(null);// spacer
 		items.push({
-			label: 'Create new column',
+			label: 'View in a new column',
 			action: function() {
 				addColumn([node.id]);
 			}
@@ -206,7 +255,7 @@ function addFolderHandlers(node, a) {
 				});
 			if (root.indexOf(node.id) < 0)
 				items.push({
-					label: 'Remove folder',
+					label: 'Reset folder view',
 					action: function() {
 						removeRow(pos.x, pos.y);
 					}
@@ -220,65 +269,6 @@ function addFolderHandlers(node, a) {
 	};
 }
 
-// enables context menu for given column
-function addColumnHandlers(index, ul) {
-	var items = [];
-	var ids = columns[index];
-
-	// single folder items
-	if (ids.length == 1)
-		items = getMenuItems({id: ids[0]});
-
-	// column layout items
-	if (!getConfig('lock') && columns.length > 1) {
-		items.push(null);// spacer
-		if (index > 0)
-			items.push({
-				label: 'Move column left',
-				action: function() {
-					addColumn(ids, index - 1);
-				}
-			});
-		if (index < columns.length - 1)
-			items.push({
-				label: 'Move column right',
-				action: function() {
-					addColumn(ids, index + 2);
-				}
-			});
-		items.push({
-			label: 'Remove column',
-			action: function() {
-				removeColumn(index);
-			}
-		});
-		if (ids.length == 1) {
-			if (index > 0)
-				items.push({
-					label: 'Move folder left',
-					action: function() {
-						addRow(ids[0], index - 1);
-					}
-				});
-			if (index < columns.length - 1)
-				items.push({
-					label: 'Move folder right',
-					action: function() {
-						addRow(ids[0], index + 1);
-					}
-				});
-		}
-	}
-
-	if (items.length > 0)
-		ul.oncontextmenu = function(event) {
-			if (event.target.tagName == 'A' || event.target.parentNode.tagName == 'A')
-				return true;
-			renderMenu(items, event.pageX, event.pageY);
-			return false;
-		};
-}
-
 // gets context menu items for given node
 function getMenuItems(node) {
 	var items = [];
@@ -286,20 +276,6 @@ function getMenuItems(node) {
 			label: 'Open all links in folder',
 			action: function() {
 				openLinks(node);
-			}
-		});
-	if (node.id == 'closed')
-		items.push({
-			label: 'Clear browsing data',
-			action: function() {
-				openLink({ url: 'chrome://settings/clearBrowserData' }, 1);
-			}
-		});
-	if (node.id == 'devices')
-		items.push({
-			label: 'History',
-			action: function() {
-				openLink({ url: 'chrome://history' }, 1);
 			}
 		});
 	if (Number(node.id))
@@ -380,27 +356,29 @@ function closeMenu(ul) {
 }
 
 var dragIds;
+var dropTarget;
+var dropBookmarkNode;
+var crossedMidpoint;
 
-// enable drag and drop of column
-function enableDragColumn(id, column) {
+// enable drag and drop of a single Bookmark
+function enableDragBookmark(node, a){
 	if (getConfig('lock'))
 		return;
 
-	column.draggable = true;
-
-	column.ondragstart = function(event) {
-		dragIds = columns[id];
-		event.dataTransfer.effectAllowed = 'move';
+	a.draggable = true;
+	a.ondragstart = function(event) {
+		dragIds = [node.id];
+		event.stopPropagation();
+		event.dataTransfer.effectAllowed = 'move copy';
 		this.classList.add('dragstart');
 	};
-	column.ondragend = function(event) {
+
+  a.ondragend = function(event) {
 		dragIds = null;
 		this.classList.remove('dragstart');
 		clearDropTarget();
 	};
 }
-
-var dropTarget;
 
 // enable drag and drop of folder
 function enableDragFolder(node, a) {
@@ -437,56 +415,90 @@ function enableDragDrop() {
 		event.dataTransfer.dropEffect = 'move';
 		// highlight drop target
 		var target = getDropTarget(event);
-		if (target) {
+		if (target && dropBookmarkNode) {
 			clearDropTarget();
 			dropTarget = target;
 			var bordercss = 'solid 2px ' + getConfig('font_color');
-			if (target.tagName == 'LI' || target.tagName == 'UL') {
-				if (isAbove(event.pageY, target)) {
-					target.style.borderBottom = bordercss;
-					target.style.margin = '0 0 -2px 0';
-				} else {
-					target.style.borderTop = bordercss;
-					target.style.margin = '-2px 0 0 0';
-				}
-			} else if (target.className == 'column') {
-				if (event.pageX - target.offsetLeft > target.clientWidth / 2) {
-					target.style.borderRight = bordercss;
-					target.style.margin = '0';
-				} else {
-					target.style.borderLeft = bordercss;
-					target.style.margin = '0 2px 0 -2px';
-				}
-			}
-		}
+      if (crossedMidpoint) {
+        dropBookmarkNode.style.borderBottom = bordercss;
+        dropBookmarkNode.style.margin = '0 0 -2px 0';
+      } else {
+        dropBookmarkNode.style.borderTop = bordercss;
+        dropBookmarkNode.style.margin = '0 0 -2px 0';
+      }
+    }
 		return false;
 	};
 
 	main.ondragleave = function(event) {
-		clearDropTarget();
+    clearDropBookmark();
 	};
 
-	main.ondrop = function(event) {
-		event.stopPropagation();
+  main.ondrop = function (event) {
+    event.stopPropagation();
 
-		var target = getDropTarget(event);
-		if (!target)
-			return false;
+    var target = getDropTarget(event);
+    if (!target)
+      return false;
 
-		// calculate drop coordinates
-		var x = getDropX(target, event);
-		var y = getDropY(target, event);
+    // calculate drop coordinates
+    var x = getDropX(target, event);
+    var y = getDropY(target, event);
 
-		if (dragIds.length == 1 && y != null)
-			addRow(dragIds[0], x, y);
-		else {
-			if (event.pageX - target.offsetLeft > target.clientWidth / 2)
-				x++;
-			addColumn(dragIds, x);
-		}
+    if (dropBookmarkNode && dragIds && dragIds.length == 1) {
+      var draggedID = dragIds[0];
+      var ulElem = dropBookmarkNode.parentNode;
+      var parentLI = ulElem.parentNode?.parentNode;
+      if(!parentLI) return
+      if(parentLI.className == 'column')
+        parentLI = dropBookmarkNode;
+      var parentAnchor = parentLI?.firstChild;
+      var targetID  = parentAnchor.dataset.id;
+      var siblingID = dropBookmarkNode.firstChild.dataset.id;
+      // Now, to make the required move
+      chrome.bookmarks.getChildren(targetID, (result) => {
+        var index = 1; // Start at 1 to indicate position for new entry
+        if(targetID != siblingID){
+          while(result[index]['id'] != siblingID)
+            index++;
+        }
+        chrome.bookmarks.move(draggedID, {
+          'parentId': targetID,
+          'index': index
+        }, (result) => {
+          if (result) {
+            var parentId = result['parentId'];
+            localStorage.setItem('open.' + parentId, true);
+            loadColumns();
+          }
+        });
+      });
+    }
 
-		return false;
-	};
+    return false;
+  };
+}
+
+function setDropBookmark(target, event){
+  var anchorElem = target?.firstChild;
+  var anchorElemTagName = anchorElem?.tagName;
+  if (anchorElemTagName != 'A')
+    return;
+
+  // Select the node to mark as the dropped bookmark node correctly.
+  var grandParent = target?.parentNode?.parentNode;
+  var isTopElem = grandParent?.className == 'column';
+  clearDropBookmark();
+  if(isTopElem && !isAbove(event.pageY, target))
+    return
+
+  // the event coordinates have crossed the midpoint of LI element
+  crossedMidpoint = true;
+  if (!isAbove(event.pageY, target)) {
+    // The event did not cross the midpoint of LI element
+    crossedMidpoint = false;
+  }
+  dropBookmarkNode = target;
 }
 
 // gets proper drop target element
@@ -494,22 +506,56 @@ function getDropTarget(event) {
 	if (!dragIds)
 		return null;
 	var target = event.target;
-	if (target && (target.tagName == 'A' || target.parentNode.tagName == 'A') && dragIds.length == 1) {
+  var targetBookmarkItem = null;
+  var targetWithinDragged = false;
+  if (!targetBookmarkItem && target.tagName == 'LI' && dragIds[0] != target)
+    targetBookmarkItem = target;
+  var targetID;
+
+  if (target && (target.tagName == 'A' || target.parentNode.tagName == 'A') && dragIds.length == 1) {
 		// get parent folder until toplevel
+    targetID = target.firstChild?.dataset?.id ?? target.dataset.id;
+    if (dragIds.includes(targetID))
+      targetWithinDragged = true;
+
 		while (target &&
 			target.parentNode.parentNode &&
 			target.parentNode.parentNode.className != 'column') {
-			// target should be LI
-			target = target.parentNode;
+
+      if (target.tagName == 'LI') {
+        targetID = target.firstElementChild?.dataset?.id;
+        if (dragIds.includes(targetID))
+          targetWithinDragged = true;
+      }
+
+      if (!targetBookmarkItem && target.tagName == 'LI')
+        targetBookmarkItem = target;
+
+      // target should be LI
+      target = target.parentNode;
 		}
 		// if single-folder column, get the UL
 		if (target && target.tagName == 'LI' &&
-			columns[getDropX(target, event)].length == 1)
-			target = target.parentNode;
+			columns[getDropX(target, event)].length == 1) {
+			  target = target.parentNode;
+      }
 		// target should be LI or UL by here...
 	} else
-		while (target && target.className != 'column')
+		while (target && target.className != 'column') {
 			target = target.parentNode;// target column
+      if (target.tagName == 'LI') {
+        targetID = target.firstElementChild?.dataset?.id;
+        if (dragIds.includes(targetID))
+          targetWithinDragged = true;
+      }
+    }
+
+  if (!targetBookmarkItem && target.tagName == 'LI')
+    targetBookmarkItem = target;
+  if(targetWithinDragged)
+    clearDropBookmark()
+  else
+    setDropBookmark(targetBookmarkItem, event);
 
 	return target;
 }
@@ -558,6 +604,15 @@ function clearDropTarget() {
 	dropTarget = null;
 }
 
+// clears droptarget styles
+function clearDropBookmark() {
+	if (dropBookmarkNode) {
+		dropBookmarkNode.style.border = null;
+		dropBookmarkNode.style.margin = null;
+	}
+	dropBookmarkNode = null;
+}
+
 var tooltipTimeout = null;
 // adds tootlips to truncated text
 function updateTooltips() {
@@ -579,83 +634,35 @@ function updateTooltips() {
 
 // gets function that returns children of node
 function getChildrenFunction(node) {
-	switch(node.id) {
-		case 'top':
-			return function(callback) {
-				if (chrome.topSites)
-					chrome.topSites.get(function(result) {
-						callback(result.slice(0, getConfig('number_top')));
-					});
-				else
-					callback([]);
-			};
-		case 'recent':
-			return function(callback) {
-				chrome.bookmarks.getRecent(getConfig('number_recent'), function(result) {
-					callback(result);
-				});
-			};
-		case 'closed':
-			return function(callback) {
-				getClosed(function(result) {
-					callback(result);
-				});
-			};
-		case 'devices':
-			return function(callback) {
-				getDevices(function(result) {
-					callback(result);
-				});
-			};
-		default:
-			if (node.children)
-				return function(callback) {
-					callback(node.children);
-				};
-			else
-				return function(callback) {
-					chrome.bookmarks.getSubTree(node.id, function(result) {
-						if (result)
-							callback(result[0].children);
-						else {
-							// remove missing bookmark locations
-							if (coords[node.id])
-								removeRow(coords[node.id].x, coords[node.id].y);
-						}
-					});
-				};
-	}
+  if (node.children)
+    return function (callback) {
+      callback(node.children);
+    };
+  else
+    return function (callback) {
+      chrome.bookmarks.getSubTree(node.id, function (result) {
+        if (result)
+          callback(result[0].children);
+        else {
+          // remove missing bookmark locations
+          if (coords[node.id])
+            removeRow(coords[node.id].x, coords[node.id].y);
+        }
+      });
+    };
 }
 
 // gets the subtree for given id
 function getSubTree(id, callback) {
-	switch(id) {
-		case 'top':
-			callback([{ title: 'Most visited', id: 'top', children: true}]);
-			break;
-		case 'apps':
-			callback([{ title: 'Apps', id: 'apps', url: 'chrome://apps' }]);
-			break;
-		case 'recent':
-			callback([{ title: 'Recent bookmarks', id: 'recent', children: true }]);
-			break;
-		case 'closed':
-			callback([{ title: 'Recently closed', id: 'closed', children: true }]);
-			break;
-		case 'devices':
-			callback([{ title: 'Other devices', id: 'devices', children: true }]);
-			break;
-		default:
-			chrome.bookmarks.getSubTree(id, function(result) {
-				if (result)
-					callback(result);
-				else {
-					// remove missing bookmark locations
-					if (coords[id])
-						removeRow(coords[id].x, coords[id].y);
-				}
-			});
-	}
+  chrome.bookmarks.getSubTree(id, function (result) {
+    if (result)
+      callback(result);
+    else {
+      // remove missing bookmark locations
+      if (coords[id])
+        removeRow(coords[id].x, coords[id].y);
+    }
+  });
 }
 
 // sets css classes for node
@@ -670,11 +677,6 @@ function setClass(target, node, isopen) {
 		target.classList.remove('open');
 
 	switch(node.id) {
-		case 'top':
-		case 'apps':
-		case 'recent':
-		case 'closed':
-		case 'devices':
 		case 'empty':
 			target.classList.add(node.id);
 	}
@@ -977,83 +979,6 @@ function removeRow(xpos, ypos) {
 	saveColumns();
 }
 
-// get recently closed tabs
-function getClosed(callback) {
-	var maxResults = getConfig('number_closed');
-	chrome.sessions.getRecentlyClosed({ maxResults: maxResults }, function(sessions) {
-		var nodes = [];
-		for (var i = 0; i < sessions.length && i < maxResults; i++) {
-			(function(session) {
-				if (session.window && session.window.tabs.length == 1)
-					session.tab = session.window.tabs[0];
-
-				nodes.push({
-					title: session.tab ? session.tab.title : session.window.tabs.length + ' Tabs',
-					url: session.tab ? session.tab.url : null,
-					className: session.window ? 'window' : null,
-					action: function() {
-						chrome.sessions.restore(session.window ? session.window.sessionId : session.tab.sessionId, function(session) {
-							refreshClosed();
-						});
-						return false;
-					}
-				});
-			})(sessions[i]);
-		}
-		callback(nodes);
-	});
-}
-
-function getDevices(callback) {
-	chrome.sessions.getDevices({ maxResults: getConfig('number_closed') }, function(devices) {
-		var nodes = [];
-		for (var i = 0; i < devices.length; i++) {
-			(function(device) {
-				var children = [];
-				for (var j = 0; j < device.sessions.length; j++) {
-					var session = device.sessions[j];
-					var tabs = session.window ? session.window.tabs : [session.tab];
-					for (var k = 0; k < tabs.length; k++) {
-						children.push({
-							title: tabs[k].title,
-							url: tabs[k].url
-						});
-					}
-				}
-				nodes.push({
-					id: 'device.' + device.deviceName,
-					title: device.deviceName,
-					children: children
-				});
-			})(devices[i]);
-		}
-		callback(nodes);
-	});
-}
-
-// refresh recently closed tab lists
-function refreshClosed() {
-	var targets = [];
-	var folders = document.getElementsByClassName('closed');
-	for (var i = 0; i < folders.length; i++) {
-		var a = folders[i];
-		if (a.nextSibling) {
-			a.parentNode.removeChild(a.nextSibling);
-			targets.push(a.parentNode);
-		}
-	}
-	if (folders.length === 0 && coords['closed']) {
-		var target = document.getElementsByClassName('column')[coords['closed'].x];
-		target.removeChild(target.firstChild);
-		targets.push(target);
-	}
-
-	getChildrenFunction({id: 'closed'})(function(result) {
-		for (var i = 0; i < targets.length; i++)
-			renderAll(result, targets[i]);
-	});
-}
-
 // options : default values
 var config = {
 	font: 'Sans-serif',
@@ -1080,13 +1005,13 @@ var config = {
 	slide: 1,
 	hide_options: 0,
 	lock: 0,
-	show_top: 1,
-	show_apps: 1,
-	show_recent: 1,
-	show_closed: 1,
-	show_devices: 1,
-	show_root: 0,
-	newtab: 0,
+	show_top: 0,
+	show_apps: 0,
+	show_recent: 0,
+	show_closed: 0,
+	show_devices: 0,
+	show_root: 1,
+	newtab: 2,
 	remember_open: 1,
 	auto_close: 0,
 	auto_scale: 1,
@@ -1608,9 +1533,24 @@ document.getElementById('options_button').onclick = function() {
 	showOptions(true);
 	return false;
 };
+
+document.getElementById('saveButton').onclick = function () {
+  var name = document.getElementById('edit_bookmark_name');
+  var url = document.getElementById('edit_bookmark_url');
+  if (!name?.dataset?.id) {
+    return
+  }
+  chrome.bookmarks.update(name.dataset.id, {
+    'title': name.value,
+    'url': url.href
+  }, (result) => {    
+    localStorage.removeItem('open.'+result.id);
+    console.log(result);
+    loadColumns();
+  });
+  var modalToggle = document.getElementById('modal-toggle');
+  modalToggle.checked =  false;
+}
+
 if (location.search === '?options')
 	showOptions(true);
-
-// refresh recently closed
-if (chrome.sessions)
-	chrome.sessions.onChanged.addListener(refreshClosed);

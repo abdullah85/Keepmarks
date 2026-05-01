@@ -124,6 +124,145 @@ body {
 	top: 0;
 	right: 0;
 }
+
+.modal {
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+.modal-box {
+  width: 40%;
+  min-width: 300px;
+  height: 300px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+}
+
+#saveButton {
+  position: absolute;
+  right: 37px;
+  top: 191px;
+  padding: 11px 15px;
+  border: 1px solid currentColor;
+  cursor: pointer;
+  margin: 0px;
+  border-radius: 7px;
+  background-color: teal;
+  color: white;
+  font-size: medium;
+  font-weight: bold;
+}
+
+.close-button {
+  position: absolute;
+  right: 119px;
+  top: 195px;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  cursor: pointer;
+  margin: 0px;
+  border-radius: 7px;
+}
+
+#modal-toggle ~ .modal {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modal {
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 300ms;
+}
+#modal-toggle:checked ~ .modal {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.buttonContainer {
+  margin: 0 auto;
+  text-align: center;
+  height: 51px;
+}
+
+#modal-toggle{
+  display: none;
+}
+.open-button {
+  width: 200px;
+  height: 30px;
+  background-color: var( - blue);
+  padding: 10px;
+  cursor: pointer;
+}
+
+#edit_bookmark {
+  position:relative;
+  font-size: 1.4em;
+	color: #000;
+	border: solid #999;
+	border-width: 0 0 1px 1px;
+	border-bottom-left-radius: 3px;
+	box-shadow: 0 7px 7px rgba(0, 0, 0, 0.3);
+	min-width: 32em;
+	min-height: 10em;
+  background-color: #EEE;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	border-right: solid 1px #ccc;
+}
+
+#edit_bookmark{
+  /* top:0%; */
+  /* display: flex; */
+  margin: 0 auto;
+  border-top: 19px solid teal;
+  border-radius: 5px;
+  /* right: 50%; */
+}
+
+#edit_bookmark h3{
+  text-align: center;
+  margin-top: 11px;
+  margin-bottom: 5px;
+}
+
+#edit_bookmark fieldset {
+  /* margin-top: 0px; */
+  margin: 0px auto 15px;
+}
+
+#edit_bookmark input{
+  width: 90%;
+  margin: 5px 0px 9px 15px;
+  padding: 3px;
+}
+
+#edit_bookmark span{
+  float: left;
+	text-align: left;
+	line-height: 1.9;
+  font-size: medium;
+}
+
 #options {
 	display: none;
 	font-size: 1.4em;
