@@ -1,438 +1,489 @@
 'use strict';
 
 // render a single bookmark node
-function render(node, target) {
-	if (node.description == 'separator') return;
+function render(node, target, toplevel) {
+  if (node.description == 'separator') return;
 
-	var li = document.createElement('li');
-	var a = document.createElement('a');
+  var li = document.createElement('li');
+  var a = document.createElement('a');
 
   a.dataset.id = node.id;
-	var url = node.url;
-	if (url)
-		a.href = url;
-	else
-		a.tabIndex = 0;
+  var url = node.url;
+  if (url)
+    a.href = url;
+  else
+    a.tabIndex = 0;
 
-	var text = node.title || node.name || '';
-	if (!text && node.title === null) text = node.url || '';
-	a.innerText = text;
+  var text = node.title || node.name || '';
+  if (!text && node.title === null) text = node.url || '';
+  a.innerText = text;
 
-	if (node.tooltip) a.title = node.tooltip;
-	setClass(a, node);
+  if (node.tooltip) a.title = node.tooltip;
+  setClass(a, node);
 
-	a.insertBefore(getIcon(node), a.firstChild);
+  a.insertBefore(getIcon(node), a.firstChild);
 
-	if (node.action) {
-		a.onclick = function(event) {
-			return node.action(event);
-		};
-	} else if (url) {
-		var newtab = getConfig('newtab');
-		if (newtab == 1) {
-			// new foreground tab
-			a.target = '_blank';
-		} else if (newtab == 2) {
-			// new background tab
-			a.onclick = function(e) {
-				openLink(node, newtab);
-				return false;
-			};
-		}
-		// fix opening chrome:// and file:/// urls
-		var urlStart = url.substring(0, 6);
-		if (urlStart === 'chrome' || urlStart === 'file:/'){
-			a.onclick = function(e) {
-				openLink(node, newtab || (e.ctrlKey ? 2 : 0));
-				return false;
-			};
-			a.onauxclick = function(e) {
-				if (e.button == 1) {
-					openLink(node, 2);
-					return false;
-				}
-			}
-		}
-	} else if (!node.children)
-		a.style.pointerEvents = 'none';
+  if (node.action) {
+    a.onclick = function (event) {
+      return node.action(event);
+    };
+  } else if (url) {
+    // new background tab
+    a.onclick = function (e) {
+      openLink(node, newtab);
+      return false;
+    };
 
-	li.appendChild(a);
+    // fix opening chrome:// and file:/// urls
+    var urlStart = url.substring(0, 6);
+    if (urlStart === 'chrome' || urlStart === 'file:/') {
+      a.onclick = function (e) {
+        openLink(node, newtab || (e.ctrlKey ? 2 : 0));
+        return false;
+      };
+      a.onauxclick = function (e) {
+        if (e.button == 1) {
+          openLink(node, 2);
+          return false;
+        }
+      }
+    }
+  } else if (!node.children)
+    a.style.pointerEvents = 'none';
 
-	// folder
-	if (node.children) {
-		// render children
-		if (a.open || getConfig('remember_open') && localStorage.getItem('open.' + node.id)) {
-			setClass(a, node, true);
-			a.open = true;
-			getChildrenFunction(node)(function(result) {
-				renderAll(result, li);
-			});
-		}
+  li.appendChild(a);
 
-		// click handlers
-		addFolderHandlers(node, a);
-		enableDragFolder(node, a);
+  // folder
+  if (node.children) {
+    var extracted = false
+    if(!toplevel && coords[node.id]) {
+      extracted = true;
+      li.classList.add('extracted');
+    } else {
+      // render children
+      if (a.open || getConfig('remember_open') && localStorage.getItem('open.' + node.id)) {
+        setClass(a, node, true);
+        a.open = true;
+        getChildrenFunction(node)(function (result) {
+          renderAll(result, li);
+        });
+      }
+    }
 
-	} else { // A single bookmark
+    // click handlers
+    addFolderHandlers(node, a, extracted);
+    if(!toplevel && !coords[node.id])
+      enableDragFolder(node, a);
+  } else { // A single bookmark
     addBookmarkHandlers(node, a);
     enableDragBookmark(node, a);
   }
 
-	target.appendChild(li);
-	return li;
+  target.appendChild(li);
+  return li;
 }
 
 // render an array of bookmark nodes
 function renderAll(nodes, target, toplevel) {
-	var ul = document.createElement('ul');
-	for (var i = 0; i < nodes.length; i++) {
-		var node = nodes[i];
-		// skip extensions and duplicated child folders
-		if (toplevel || !coords[node.id])
-			render(node, ul);
-	}
-	if (ul.childNodes.length === 0)
-		render({ id: 'empty', title: '< Empty >' }, ul);
-	if (toplevel)
-		target.appendChild(ul);
-	else {
-		// wrap child ul for animation
-		var wrap = document.createElement('div');
-		wrap.appendChild(ul);
-		target.appendChild(wrap);
-	}
-	updateTooltips();
-	return ul;
+  var ul = document.createElement('ul');
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    render(node, ul, toplevel);
+  }
+  if (ul.childNodes.length === 0)
+    render({ id: 'empty', title: '< Empty >' }, ul);
+  if (toplevel)
+    target.appendChild(ul);
+  else {
+    // wrap child ul for animation
+    var wrap = document.createElement('div');
+    wrap.appendChild(ul);
+    target.appendChild(wrap);
+  }
+  updateTooltips();
+  return ul;
 }
 
 // render column with given index
 function renderColumn(index, target) {
-	var ids = columns[index];
-	if (ids.length == 1 && !getConfig('show_root'))
-		getChildrenFunction({id: ids[0]})(function(result) {
-			renderAll(result, target);
-		});
-	else if (ids.length > 0) {
-		var i = 0;
-		var nodes = [];
-		// get all nodes for column
-		var callback = function(result) {
-			for (var j = 0; j < result.length; j++)
-				nodes.push(result[j]);
-			i++;
-			if (i < ids.length)
-				getSubTree(ids[i], callback);
-			else {
-				// render node list
-				renderAll(nodes, target, true);
-			}
-		};
-		getSubTree(ids[i], callback);
-	}
+  var ids = columns[index];
+  if (ids.length > 0) {
+    var i = 0;
+    var nodes = [];
+    // get all nodes for column
+    var callback = function (result) {
+      for (var j = 0; j < result.length; j++)
+        nodes.push(result[j]);
+      i++;
+      if (i < ids.length)
+        getSubTree(ids[i], callback);
+      else {
+        // render node list
+        renderAll(nodes, target, true);
+  			addColumnHandlers(index, target);
+      }
+    };
+    getSubTree(ids[i], callback);
+  }
 }
 
 // render all columns to main div
 function renderColumns() {
-	// clear main div
-	var target = document.getElementById('main');
-	while (target.hasChildNodes())
-		target.removeChild(target.lastChild);
+  // clear main div
+  var target = document.getElementById('main');
+  while (target.hasChildNodes())
+    target.removeChild(target.lastChild);
 
-	// render columns
-	for (var i = 0; i < columns.length; i++) {
-		var column = document.createElement('div');
-		column.className = 'column';
-		column.style.width = (1 / columns.length) * 100 + '%';
+  // render columns
+  for (var i = 0; i < columns.length; i++) {
+    var column = document.createElement('div');
+    column.className = 'column';
+    column.style.width = (1 / columns.length) * 100 + '%';
 
-		target.appendChild(column);
-		renderColumn(i, column);
-	}
+    target.appendChild(column);
+    renderColumn(i, column);
+  }
 
-	enableDragDrop();
+  enableDragDrop();
 }
 
 function editBookmark(id, a) {
   var modalToggle = document.getElementById('modal-toggle');
-  var elem = document.querySelector('[data-id="'+id+'"]');
+  var elem = document.querySelector('[data-id="' + id + '"]');
   // Ideally, elem will be set correctly for the bookmark
   if (!elem) return;
-  var name = document.getElementById('edit_bookmark_name');  
+  var name = document.getElementById('edit_bookmark_name');
   name.value = elem.innerText;
   name.dataset.id = id;
-  var url  = document.getElementById('edit_bookmark_url');
+  var url = document.getElementById('edit_bookmark_url');
   url.value = a.href;
   modalToggle.checked = true;
 }
 
-function deleteBookmark(id, a){
+function deleteBookmark(id, a) {
   chrome.bookmarks.remove(id, (res) => {
     loadColumns();
   });
 }
 // enables click and context menu for given Bookmark
 function addBookmarkHandlers(node, a) {
-	// context menu handler
-	var items = [];
-    items.push({
-			label: 'Open Bookmark Link',
-			action: function() {
-				openLink({ url: a.href}, 2);
-			}
-		});
-	
-    items.push({
-			label: 'Edit bookmark',
-			action: function() {
-				editBookmark(node.id, a);
-			}
-		});
+  // context menu handler
+  var items = [];
+  items.push({
+    label: 'Open Bookmark Link',
+    action: function () {
+      openLink({ url: a.href }, 2);
+    }
+  });
 
-		items.push(null);// spacer
+  items.push({
+    label: 'Edit bookmark',
+    action: function () {
+      editBookmark(node.id, a);
+    }
+  });
 
-    items.push({
-			label: 'Delete bookmark',
-			action: function() {
-        deleteBookmark(node.id, a);
-			}
-		});
+  items.push(null);// spacer
 
-    a.oncontextmenu = function(event) {
-		renderMenu(items, event.pageX, event.pageY);
-		return false;
+  items.push({
+    label: 'Delete bookmark',
+    action: function () {
+      deleteBookmark(node.id, a);
+    }
+  });
+
+  a.oncontextmenu = function (event) {
+    renderMenu(items, event.pageX, event.pageY);
+    return false;
   };
 }
 
 // enables click and context menu for given folder
-function addFolderHandlers(node, a) {
-	// click handler
-	a.onclick = function() {
-		toggle(node, a, getChildrenFunction(node));
-		return false;
-	};
+function addFolderHandlers(node, a, extracted) {
+  if(!extracted) // Toggle disabled for extracted nodes
+    // click handler
+    a.onclick = function () {
+      toggle(node, a, getChildrenFunction(node));
+      return false;
+    };
 
   // context menu handler
-	var items = getMenuItems(node);
+  var items = getMenuItems(node);
+
+  // column layout items
+  items.push(null);// spacer
+  if(!extracted)
+    items.push({
+      label: 'Extract new column',
+      action: function () {
+        addColumn([node.id]);
+      }
+    });
+
+  if (coords[node.id] && !extracted) {
+    var pos = coords[node.id];
+    if (pos.y > 0)
+      items.push({
+        label: 'Move view up',
+        action: function () {
+          addRow(node.id, pos.x, pos.y - 1);
+        }
+      });
+    if (pos.y < columns[pos.x].length - 1)
+      items.push({
+        label: 'Move view down',
+        action: function () {
+          addRow(node.id, pos.x, pos.y + 2);
+        }
+      });
+    if (pos.x > 0)
+      items.push({
+        label: 'Move view left',
+        action: function () {
+          addRow(node.id, pos.x - 1);
+        }
+      });
+    if (pos.x < columns.length - 1)
+      items.push({
+        label: 'Move folder right',
+        action: function () {
+          addRow(node.id, pos.x + 1);
+        }
+      });
+    if (root.indexOf(node.id) < 0)
+      items.push({
+        label: 'Retract folder view',
+        action: function () {
+          removeRow(pos.x, pos.y);
+        }
+      });
+  }
+
+  a.oncontextmenu = function (event) {
+    renderMenu(items, event.pageX, event.pageY);
+    return false;
+  };
+}
+
+// enables context menu for given column
+function addColumnHandlers(index, ul) {
+	var items = [];
+	var ids = columns[index];
+
+	// single folder items
+	if (ids.length == 1)
+		items = getMenuItems({id: ids[0]});
 
 	// column layout items
-	if (!getConfig('lock')) {
+	if (columns.length > 1) {
 		items.push(null);// spacer
+		if (index > 0)
+			items.push({
+				label: 'Move column left',
+				action: function() {
+					addColumn(ids, index - 1);
+				}
+			});
+		if (index < columns.length - 1)
+			items.push({
+				label: 'Move column right',
+				action: function() {
+					addColumn(ids, index + 2);
+				}
+			});
 		items.push({
-			label: 'View in a new column',
+			label: 'Remove column',
 			action: function() {
-				addColumn([node.id]);
+				removeColumn(index);
 			}
 		});
-
-		if (coords[node.id]) {
-			var pos = coords[node.id];
-			if (pos.y > 0)
-				items.push({
-					label: 'Move folder up',
-					action: function() {
-						addRow(node.id, pos.x, pos.y - 1);
-					}
-				});
-			if (pos.y < columns[pos.x].length - 1)
-				items.push({
-					label: 'Move folder down',
-					action: function() {
-						addRow(node.id, pos.x, pos.y + 2);
-					}
-				});
-			if (pos.x > 0)
+		if (ids.length == 1) {
+			if (index > 0)
 				items.push({
 					label: 'Move folder left',
 					action: function() {
-						addRow(node.id, pos.x - 1);
+						addRow(ids[0], index - 1);
 					}
 				});
-			if (pos.x < columns.length - 1)
+			if (index < columns.length - 1)
 				items.push({
 					label: 'Move folder right',
 					action: function() {
-						addRow(node.id, pos.x + 1);
-					}
-				});
-			if (root.indexOf(node.id) < 0)
-				items.push({
-					label: 'Reset folder view',
-					action: function() {
-						removeRow(pos.x, pos.y);
+						addRow(ids[0], index + 1);
 					}
 				});
 		}
 	}
 
-	a.oncontextmenu = function(event) {
-		renderMenu(items, event.pageX, event.pageY);
-		return false;
-	};
+	if (items.length > 0)
+		ul.oncontextmenu = function(event) {
+			if (event.target.tagName == 'A' || event.target.parentNode.tagName == 'A')
+				return true;
+			renderMenu(items, event.pageX, event.pageY);
+			return false;
+		};
 }
 
 // gets context menu items for given node
 function getMenuItems(node) {
-	var items = [];
-		items.push({
-			label: 'Open all links in folder',
-			action: function() {
-				openLinks(node);
-			}
-		});
-	if (Number(node.id))
-		items.push({
-			label: 'Edit bookmarks',
-			action: function() {
-				openLink({ url: 'chrome://bookmarks/?id=' + node.id }, 1);
-			}
-		});
-	return items;
+  var items = [];
+  items.push({
+    label: 'Open all links in folder',
+    action: function () {
+      openLinks(node);
+    }
+  });
+  if (Number(node.id))
+    items.push({
+      label: 'Edit bookmarks',
+      action: function () {
+        openLink({ url: 'chrome://bookmarks/?id=' + node.id }, 1);
+      }
+    });
+  return items;
 }
 
 // wraps click handler for menu items
 function onMenuClick(item) {
-	return function() {
-		item.action();
-		return false;
-	};
+  return function () {
+    item.action();
+    return false;
+  };
 }
 
 // renders a popup menu at given coordinates
 function renderMenu(items, x, y) {
-	var ul = document.createElement('ul');
-	ul.className = 'menu';
-	for (var i = 0; i < items.length; i++) {
-		var li = document.createElement('li');
-		if (items[i]) {
-			var a = document.createElement('a');
-			a.innerText = items[i].label;
-			a.tabIndex = 0;
-			a.onclick = onMenuClick(items[i]);
+  var ul = document.createElement('ul');
+  ul.className = 'menu';
+  for (var i = 0; i < items.length; i++) {
+    var li = document.createElement('li');
+    if (items[i]) {
+      var a = document.createElement('a');
+      a.innerText = items[i].label;
+      a.tabIndex = 0;
+      a.onclick = onMenuClick(items[i]);
 
-			li.appendChild(a);
-		} else if (i > 0 && i < items.length - 1)
-			li.appendChild(document.createElement('hr'));
-		else
-			continue;
+      li.appendChild(a);
+    } else if (i > 0 && i < items.length - 1)
+      li.appendChild(document.createElement('hr'));
+    else
+      continue;
 
-		ul.appendChild(li);
-	}
-	document.body.appendChild(ul);
-	ul.style.left = Math.max(Math.min(x, window.innerWidth + window.scrollX - ul.clientWidth), 0) + 'px';
-	ul.style.top = Math.max(Math.min(y, window.innerHeight + window.scrollY - ul.clientHeight), 0) + 'px';
-	ul.onmousedown = function(event) {
-		event.stopPropagation();
-		return true;
-	};
+    ul.appendChild(li);
+  }
+  document.body.appendChild(ul);
+  ul.style.left = Math.max(Math.min(x, window.innerWidth + window.scrollX - ul.clientWidth), 0) + 'px';
+  ul.style.top = Math.max(Math.min(y, window.innerHeight + window.scrollY - ul.clientHeight), 0) + 'px';
+  ul.onmousedown = function (event) {
+    event.stopPropagation();
+    return true;
+  };
 
-	setTimeout(function() {
-		document.onclick = function() {
-			closeMenu(ul);
-			return true;
-		};
-		document.onmousedown = function() {
-			closeMenu(ul);
-			return true;
-		};
-		document.oncontextmenu = function() {
-			closeMenu(ul);
-			return true;
-		};
-		document.onkeydown = function(event) {
-			if (event.keyCode == 27)
-				closeMenu(ul);
-			return true;
-		};
-	}, 20);
-	return ul;
+  setTimeout(function () {
+    document.onclick = function () {
+      closeMenu(ul);
+      return true;
+    };
+    document.onmousedown = function () {
+      closeMenu(ul);
+      return true;
+    };
+    document.oncontextmenu = function () {
+      closeMenu(ul);
+      return true;
+    };
+    document.onkeydown = function (event) {
+      if (event.keyCode == 27)
+        closeMenu(ul);
+      return true;
+    };
+  }, 20);
+  return ul;
 }
 
 // removes the given popup menu
 function closeMenu(ul) {
-	document.body.removeChild(ul);
-	document.onclick = null;
-	document.onmousedown = null;
-	document.oncontextmenu = null;
-	document.onkeydown = null;
+  document.body.removeChild(ul);
+  document.onclick = null;
+  document.onmousedown = null;
+  document.oncontextmenu = null;
+  document.onkeydown = null;
 }
 
 var dragIds;
+var disabledBoundedRect, disabledScrollX, disabledScrollY;
+var dropDisabled;
 var dropTarget;
-var dropBookmarkNode;
-var crossedMidpoint;
+var inLowerHalf;
 
 // enable drag and drop of a single Bookmark
-function enableDragBookmark(node, a){
-	if (getConfig('lock'))
-		return;
+function enableDragBookmark(node, a) {
+  a.draggable = true;
+  a.ondragstart = function (event) {
+    dragIds = [node.id];
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move copy';
+    this.classList.add('dragstart');
+  };
 
-	a.draggable = true;
-	a.ondragstart = function(event) {
-		dragIds = [node.id];
-		event.stopPropagation();
-		event.dataTransfer.effectAllowed = 'move copy';
-		this.classList.add('dragstart');
-	};
-
-  a.ondragend = function(event) {
-		dragIds = null;
-		this.classList.remove('dragstart');
-		clearDropTarget();
-	};
+  a.ondragend = function (event) {
+    dragIds = null;
+    this.classList.remove('dragstart');
+    clearDropTarget();
+  };
 }
 
 // enable drag and drop of folder
 function enableDragFolder(node, a) {
-	if (getConfig('lock'))
-		return;
-
 	a.draggable = true;
 	a.ondragstart = function(event) {
 		dragIds = [node.id];
 		event.stopPropagation();
 		event.dataTransfer.effectAllowed = 'move copy';
 		this.classList.add('dragstart');
+    var liContainer = this.parentNode;
+    if(liContainer && liContainer.tagName == 'LI'){
+      disabledBoundedRect = liContainer.getBoundingClientRect();
+      disabledScrollX = window.scrollX;
+      disabledScrollY = window.scrollY;
+    }
 	};
 	a.ondragend = function(event) {
 		dragIds = null;
 		this.classList.remove('dragstart');
 		clearDropTarget();
+    if(disabledBoundedRect){
+      disabledBoundedRect = null;
+      disabledScrollX = null;
+      disabledScrollY = null;
+    }    
 	};
 }
 
 // init drag and drop handlers
 function enableDragDrop() {
-	var main = document.getElementById('main');
+  var main = document.getElementById('main');
 
-	if (getConfig('lock')) {
-		main.ondragover = null;
-		main.ondragleave = null;
-		main.ondrop = null;
-		return;
-	}
-
-	main.ondragover = function(event) {
-		event.preventDefault();
-		event.dataTransfer.dropEffect = 'move';
-		// highlight drop target
-		var target = getDropTarget(event);
-		if (target && dropBookmarkNode) {
-			clearDropTarget();
-			dropTarget = target;
-			var bordercss = 'solid 2px ' + getConfig('font_color');
-      if (crossedMidpoint) {
-        dropBookmarkNode.style.borderBottom = bordercss;
-        dropBookmarkNode.style.margin = '0 0 -2px 0';
-      } else {
-        dropBookmarkNode.style.borderTop = bordercss;
-        dropBookmarkNode.style.margin = '0 0 -2px 0';
-      }
+  main.ondragover = function (event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    // highlight drop target
+    var target = getDropTarget(event);
+    if (target) {
+      clearDropTarget();
+      dropTarget = target;
+      var bordercss = 'solid 2px rgb(85, 85, 85)';
+      if (inLowerHalf)
+        dropTarget.style.borderBottom = bordercss;
+      else
+        dropTarget.style.borderTop = bordercss;
     }
-		return false;
-	};
+    return false;
+  };
 
-	main.ondragleave = function(event) {
-    clearDropBookmark();
-	};
+  main.ondragleave = function (event) {
+    clearDropTarget();
+  };
 
   main.ondrop = function (event) {
     event.stopPropagation();
@@ -441,29 +492,48 @@ function enableDragDrop() {
     if (!target)
       return false;
 
-    // calculate drop coordinates
-    var x = getDropX(target, event);
-    var y = getDropY(target, event);
-
-    if (dropBookmarkNode && dragIds && dragIds.length == 1) {
+    if (dragIds && dragIds.length == 1) {
       var draggedID = dragIds[0];
-      var ulElem = dropBookmarkNode.parentNode;
-      var parentLI = ulElem.parentNode?.parentNode;
-      if(!parentLI) return
-      if(parentLI.className == 'column')
-        parentLI = dropBookmarkNode;
-      var parentAnchor = parentLI?.firstChild;
-      var targetID  = parentAnchor.dataset.id;
-      var siblingID = dropBookmarkNode.firstChild.dataset.id;
+      var ulElem = target.parentNode;
+      var liParent = ulElem.parentNode?.parentNode;
+      if (!liParent) return
+
+      var targetID = target.firstChild.dataset.id;
+      // liParent must be a normal Node (could be a root element currently)
+      var parentAnchor = liParent?.firstChild;
+      var targetParentID = parentAnchor.dataset.id;
+
+      if(targetID == 'empty'){
+        // Dropping on an empty node is much simpler to perform
+        chrome.bookmarks.move(draggedID, {
+          'parentId': targetParentID,
+          'index': 0
+        }, (result) => {
+          if (result) {
+            var parentId = result['parentId'];
+            localStorage.setItem('open.' + parentId, true);
+            loadColumns();
+          }
+        });
+
+        return false;
+      }
+
       // Now, to make the required move
-      chrome.bookmarks.getChildren(targetID, (result) => {
-        var index = 1; // Start at 1 to indicate position for new entry
-        if(targetID != siblingID){
-          while(result[index]['id'] != siblingID)
-            index++;
+      chrome.bookmarks.getChildren(targetParentID, (result) => {
+        var result_ids = result.map((item) => item['id']);        
+        var target_idx = result_ids.indexOf(targetID);        
+        if (target_idx == -1) // Target was not found in this case
+          return;
+
+        // Set as first element by default when inLowerHalf is false
+        var index = 0;
+        if (inLowerHalf) {
+          // Check if dragged item is a sibling appearing earlier
+          var index = target_idx + 1; // After the target
         }
         chrome.bookmarks.move(draggedID, {
-          'parentId': targetID,
+          'parentId': targetParentID,
           'index': index
         }, (result) => {
           if (result) {
@@ -479,157 +549,101 @@ function enableDragDrop() {
   };
 }
 
-function setDropBookmark(target, event){
-  var anchorElem = target?.firstChild;
-  var anchorElemTagName = anchorElem?.tagName;
-  if (anchorElemTagName != 'A')
-    return;
-
-  // Select the node to mark as the dropped bookmark node correctly.
-  var grandParent = target?.parentNode?.parentNode;
-  var isTopElem = grandParent?.className == 'column';
-  clearDropBookmark();
-  if(isTopElem && !isAbove(event.pageY, target))
-    return
-
-  // the event coordinates have crossed the midpoint of LI element
-  crossedMidpoint = true;
-  if (!isAbove(event.pageY, target)) {
-    // The event did not cross the midpoint of LI element
-    crossedMidpoint = false;
-  }
-  dropBookmarkNode = target;
-}
-
-// gets proper drop target element
+// Get the correct LI element
 function getDropTarget(event) {
-	if (!dragIds)
-		return null;
-	var target = event.target;
-  var targetBookmarkItem = null;
-  var targetWithinDragged = false;
-  if (!targetBookmarkItem && target.tagName == 'LI' && dragIds[0] != target)
-    targetBookmarkItem = target;
-  var targetID;
+  var target = event.target;
+  if (!dragIds || dragIds.length != 1 || !target)
+    return null;
 
-  if (target && (target.tagName == 'A' || target.parentNode.tagName == 'A') && dragIds.length == 1) {
-		// get parent folder until toplevel
-    targetID = target.firstChild?.dataset?.id ?? target.dataset.id;
-    if (dragIds.includes(targetID))
-      targetWithinDragged = true;
+  dropDisabled = inDisabledBoundedRect(event);
+  if (dropDisabled) {
+    return null;
+  }
 
-		while (target &&
-			target.parentNode.parentNode &&
-			target.parentNode.parentNode.className != 'column') {
+  if (target.tagName == 'A') {
+    target = target.parentNode;
+  } else if (target.parentNode?.tagName == 'A') { // For the child icon
+    target = target.parentNode?.parentNode;
+  }
 
-      if (target.tagName == 'LI') {
-        targetID = target.firstElementChild?.dataset?.id;
-        if (dragIds.includes(targetID))
-          targetWithinDragged = true;
-      }
+  // The required LI element should be selected now
+  if (!target || target.tagName != 'LI') {
+    return null;
+  }
 
-      if (!targetBookmarkItem && target.tagName == 'LI')
-        targetBookmarkItem = target;
+  // If Target element is empty, then enforce upper half logic.
+  var anchorElem = target.firstChild;
+  if(anchorElem.dataset.id == 'empty') {
+    // Dropping on an empty element can only be added above.
+    inLowerHalf = false;
+    return target;
+  }
 
-      // target should be LI
-      target = target.parentNode;
-		}
-		// if single-folder column, get the UL
-		if (target && target.tagName == 'LI' &&
-			columns[getDropX(target, event)].length == 1) {
-			  target = target.parentNode;
-      }
-		// target should be LI or UL by here...
-	} else
-		while (target && target.className != 'column') {
-			target = target.parentNode;// target column
-      if (target.tagName == 'LI') {
-        targetID = target.firstElementChild?.dataset?.id;
-        if (dragIds.includes(targetID))
-          targetWithinDragged = true;
-      }
-    }
+  // Elements can be dropped only on non root elements
+  var grandParent = target.parentNode?.parentNode;
+  if (grandParent && grandParent.className == 'column') {
+    return null;
+  }
 
-  if (!targetBookmarkItem && target.tagName == 'LI')
-    targetBookmarkItem = target;
-  if(targetWithinDragged)
-    clearDropBookmark()
-  else
-    setDropBookmark(targetBookmarkItem, event);
+  // Record if current event is in bottom half of target
+  inLowerHalf = inBottomHalf(event.pageY, target);
+  if (!inLowerHalf && target.previousElementSibling) {
+    target = target.previousElementSibling;
+    inLowerHalf = true;
+  }
 
-	return target;
+  return target;
 }
 
-// gets x coordinate of drop target
-function getDropX(target, event) {
-	var x = null;
-	while (target && target.className != 'column')
-		target = target.parentNode;
-	if (target) {
-		x = 0;
-		for (; target.previousSibling; x++)
-			target = target.previousSibling;
-	}
-	return x;
+// returns true if y position is in the bottom half of target
+function inBottomHalf(pageY, target) {
+  return pageY - window.scrollY - target.getBoundingClientRect().top > target.clientHeight / 2;
 }
 
-// gets y coordinate of drop target
-function getDropY(target, event) {
-	var y = null;
-	if (target.tagName == 'LI') {
-		y = 0;
-		if (isAbove(event.pageY, target))
-			y++;
-		for (; target.previousSibling; y++)
-			target = target.previousSibling;
-	} else if (target.tagName == 'UL') {
-		y = 0;
-		if (isAbove(event.pageY, target))
-			y++;
-	}
-	return y;
-}
+// Check if event is triggered within the disabledBoundedRect
+function inDisabledBoundedRect(event) {
+  // Check if coordinates, boundaries are defined
+  if (!disabledBoundedRect || !disabledBoundedRect.top || !disabledBoundedRect.right
+    || !disabledBoundedRect.bottom || !disabledBoundedRect.left)
+    return false
 
-// returns true if y position is above target element midpoint
-function isAbove(pageY, target) {
-	return pageY - window.scrollY - target.getBoundingClientRect().top > target.clientHeight / 2;
+  // Convert current page coordinates to viewport for disabledClientRect
+  var xCoord = event.pageX - disabledScrollX;
+  var yCoord = event.pageY - disabledScrollY;
+
+  if (xCoord < disabledBoundedRect.left || xCoord > disabledBoundedRect.right)
+    return false
+  if (yCoord < disabledBoundedRect.top || yCoord > disabledBoundedRect.bottom)
+    return false
+  return true;
 }
 
 // clears droptarget styles
 function clearDropTarget() {
-	if (dropTarget) {
-		dropTarget.style.border = null;
-		dropTarget.style.margin = null;
-	}
-	dropTarget = null;
-}
-
-// clears droptarget styles
-function clearDropBookmark() {
-	if (dropBookmarkNode) {
-		dropBookmarkNode.style.border = null;
-		dropBookmarkNode.style.margin = null;
-	}
-	dropBookmarkNode = null;
+  if (dropTarget) {
+    dropTarget.style.border = null;
+    dropTarget.style.margin = null;
+  }
+  dropTarget = null;
 }
 
 var tooltipTimeout = null;
 // adds tootlips to truncated text
 function updateTooltips() {
-	if (tooltipTimeout) clearTimeout(tooltipTimeout);
+  if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
-	tooltipTimeout = setTimeout(function() {
-		tooltipTimeout = null;
-		var elements = document.querySelectorAll('#main li a');
-		for (var i = 0; i < elements.length; i++) {
-			var element = elements[i];
-			if (element.clientWidth + 1 < element.scrollWidth) {
-				element.title = element.title || element.textContent;
-			} else if (element.title === element.textContent) {
-				element.title = '';
-			}
-		}
-	}, 100);
+  tooltipTimeout = setTimeout(function () {
+    tooltipTimeout = null;
+    var elements = document.querySelectorAll('#main li a');
+    for (var i = 0; i < elements.length; i++) {
+      var element = elements[i];
+      if (element.clientWidth + 1 < element.scrollWidth) {
+        element.title = element.title || element.textContent;
+      } else if (element.title === element.textContent) {
+        element.title = '';
+      }
+    }
+  }, 100);
 }
 
 // gets function that returns children of node
@@ -667,174 +681,168 @@ function getSubTree(id, callback) {
 
 // sets css classes for node
 function setClass(target, node, isopen) {
-	if (node.className)
-		target.classList.add(node.className);
-	if (node.children)
-		target.classList.add('folder');
-	if (isopen)
-		target.classList.add('open');
-	else
-		target.classList.remove('open');
+  if (node.className)
+    target.classList.add(node.className);
+  if (node.children)
+    target.classList.add('folder');
+  if (isopen)
+    target.classList.add('open');
+  else
+    target.classList.remove('open');
 
-	switch(node.id) {
-		case 'empty':
-			target.classList.add(node.id);
-	}
+  if (node.id == 'empty')
+    target.classList.add(node.id);
 }
 
 // gets best icon for a node
 function getIcon(node) {
-	var url = null,
-		url2x = null;
-	if (node.icons) {
-		var size;
-		for (var i in node.icons) {
-			var iconInfo = node.icons[i];
-			if (iconInfo.url && (!size || (iconInfo.size < size && iconInfo.size > 15))) {
-				url = iconInfo.url;
-				if (iconInfo.size > 31) url2x = iconInfo.url;
-				size = iconInfo.size;
-			}
-		}
-	} else if (node.icon) {
-		url = node.icon;
-	} else if (node.url) {
-		url = `/_favicon/?pageUrl=${encodeURIComponent(node.url)}&size=16`;
-		url2x = `/_favicon/?pageUrl=${encodeURIComponent(node.url)}&size=32`;
-	}
+  var url = null,
+    url2x = null;
+  if (node.icons) {
+    var size;
+    for (var i in node.icons) {
+      var iconInfo = node.icons[i];
+      if (iconInfo.url && (!size || (iconInfo.size < size && iconInfo.size > 15))) {
+        url = iconInfo.url;
+        if (iconInfo.size > 31) url2x = iconInfo.url;
+        size = iconInfo.size;
+      }
+    }
+  } else if (node.icon) {
+    url = node.icon;
+  } else if (node.url) {
+    url = `/_favicon/?pageUrl=${encodeURIComponent(node.url)}&size=16`;
+    url2x = `/_favicon/?pageUrl=${encodeURIComponent(node.url)}&size=32`;
+  }
 
-	var icon = document.createElement(url ? 'img' : 'div');
-	icon.className = 'icon';
-	icon.src = url;
-	if (url2x) icon.srcset = url2x + ' 2x';
-	icon.alt = ' ';
-	return icon;
+  var icon = document.createElement(url ? 'img' : 'div');
+  icon.className = 'icon';
+  icon.src = url;
+  if (url2x) icon.srcset = url2x + ' 2x';
+  icon.alt = ' ';
+  return icon;
 }
 
 // toggle folder open state
 function toggle(node, a) {
-	var isopen = a.open;
-	setClass(a, node, !isopen);
-	a.open = !isopen;
-	if (isopen) {
-		// close folder
-		localStorage.removeItem('open.' + node.id);
-		if (a.nextSibling){
-			// auto-close child folders
-			if (getConfig('auto_close')) {
-				var children = (a.nextSibling.tagName == 'DIV' ? a.nextSibling.firstChild : a.nextSibling).children;
-				for (var i=0; i<children.length; i++) {
-					var child = children[i].firstChild;
-					if (child.open)
-						child.onclick();
-				}
-			}
-			// close folder
-			animate(node, a, isopen);
-		}
-	} else {
-		// open folder
-		localStorage.setItem('open.' + node.id, true);
-		// auto-close sibling folders
-		if (getConfig('auto_close')) {
-			var siblings = a.parentNode.parentNode.children;
-			for (var i=0; i<siblings.length; i++) {
-				var sibling = siblings[i].firstChild;
-				if (sibling != a && sibling.open)
-					sibling.onclick();
-			}
-		}
-		// open folder
-		if (a.nextSibling)
-			animate(node, a, isopen);
-		else
-			getChildrenFunction(node)(function(result) {
-				if (!a.nextSibling && a.open) {
-					renderAll(result, a.parentNode);
-					animate(node, a, isopen);
-				}
-			});
-	}
+  var isopen = a.open;
+  setClass(a, node, !isopen);
+  a.open = !isopen;
+  if (isopen) {
+    // close folder
+    localStorage.removeItem('open.' + node.id);
+    if (a.nextSibling) {
+      // auto-close child folders
+      if (getConfig('auto_close')) {
+        var children = (a.nextSibling.tagName == 'DIV' ? a.nextSibling.firstChild : a.nextSibling).children;
+        for (var i = 0; i < children.length; i++) {
+          var child = children[i].firstChild;
+          if (child.open)
+            child.onclick();
+        }
+      }
+      // close folder
+      animate(node, a, isopen);
+    }
+  } else {
+    // open folder
+    localStorage.setItem('open.' + node.id, true);
+    // auto-close sibling folders
+    if (getConfig('auto_close')) {
+      var siblings = a.parentNode.parentNode.children;
+      for (var i = 0; i < siblings.length; i++) {
+        var sibling = siblings[i].firstChild;
+        if (sibling != a && sibling.open)
+          sibling.onclick();
+      }
+    }
+    // open folder
+    if (a.nextSibling)
+      animate(node, a, isopen);
+    else
+      getChildrenFunction(node)(function (result) {
+        if (!a.nextSibling && a.open) {
+          renderAll(result, a.parentNode);
+          animate(node, a, isopen);
+        }
+      });
+  }
 }
 
 // smoothly open or close folder
 function animate(node, a, isopen) {
-	// TODO: fix nested animations
-	// wrapper needed for inner height value
-	var wrap = a.nextSibling;
-	if (a.animationHandle) {
-		// clear last animation
-		clearTimeout(a.animationHandle);
-		a.animationHandle = null;
-	} else {
-		// start animation
-		wrap.style.height = isopen ? wrap.firstChild.clientHeight + 'px' : 0;
-		wrap.style.opacity = isopen ? 1 : 0;
-	}
-	// requestAnimationFrame twice to ensure at least one frame has passed
-	requestAnimationFrame(function() {
-		requestAnimationFrame(function() {
-			if (wrap) {
-				wrap.className = 'wrap';
-				wrap.style.height = isopen ? 0 : wrap.firstChild.clientHeight + 'px';
-				wrap.style.opacity = isopen ? 0 : 1;
-				wrap.style.pointerEvents = isopen ? 'none' : null;
-			}
-		});
-	});
+  // TODO: fix nested animations
+  // wrapper needed for inner height value
+  var wrap = a.nextSibling;
+  if (a.animationHandle) {
+    // clear last animation
+    clearTimeout(a.animationHandle);
+    a.animationHandle = null;
+  } else {
+    // start animation
+    wrap.style.height = isopen ? wrap.firstChild.clientHeight + 'px' : 0;
+    wrap.style.opacity = isopen ? 1 : 0;
+  }
+  // requestAnimationFrame twice to ensure at least one frame has passed
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      if (wrap) {
+        wrap.className = 'wrap';
+        wrap.style.height = isopen ? 0 : wrap.firstChild.clientHeight + 'px';
+        wrap.style.opacity = isopen ? 0 : 1;
+        wrap.style.pointerEvents = isopen ? 'none' : null;
+      }
+    });
+  });
 
-	var duration = scale(getConfig('slide'), .2, 1) * 1000;
-	a.animationHandle = setTimeout(function() {
-		a.animationHandle = null;
-		if (isopen)
-			a.parentNode.removeChild(wrap);
-		else {
-			wrap.className = null;
-			wrap.removeAttribute('style');
-		}
-		wrap = null;
-	}, duration);
+  var duration = scale(getConfig('slide'), .2, 1) * 1000;
+  a.animationHandle = setTimeout(function () {
+    a.animationHandle = null;
+    if (isopen)
+      a.parentNode.removeChild(wrap);
+    else {
+      wrap.className = null;
+      wrap.removeAttribute('style');
+    }
+    wrap = null;
+  }, duration);
 }
 
 // opens immediate children of given node in new tabs
 function openLinks(node) {
-	chrome.tabs.getCurrent(function(tab) {
-		getChildrenFunction(node)(function(result) {
-			for (var i = 0; i < result.length; i++)
-				openLink(result[i], 2);
-		});
-	});
+  chrome.tabs.getCurrent(function (tab) {
+    getChildrenFunction(node)(function (result) {
+      for (var i = 0; i < result.length; i++)
+        openLink(result[i], 2);
+    });
+  });
 }
 
 // opens given node
 function openLink(node, newtab) {
-	var url = node.url;
-	if (url) {
-		chrome.tabs.getCurrent(function(tab) {
-			if (newtab)
-				chrome.tabs.create({url: url, active: (newtab == 1), openerTabId: tab.id});
-			else
-				chrome.tabs.update(tab.id, {url: url});
-		});
-	}
+  var url = node.url;
+  if (url) {
+    chrome.tabs.getCurrent(function (tab) {
+      if (newtab)
+        chrome.tabs.create({ url: url, active: (newtab == 1), openerTabId: tab.id });
+      else
+        chrome.tabs.update(tab.id, { url: url });
+    });
+  }
 }
 
 var columns; // columns[x][y] = id
 var root; // root[] = id
 var coords; // coords[id] = {x:x, y:y}
-var special = ['apps', 'top', 'recent', 'closed', 'devices'];
 
 // ensure root folders are included
 function verifyColumns() {
-	// default layout
-	if (columns.length === 0) {
-		columns.push([]);
-		columns.push(special.filter(function(a) {
-			return getConfig('show_' + a) != false;
-		}));
-	}
+  // default layout
+  if (columns.length === 0) {
+    columns.push([]);
+  }
 
-	// find missing root items
+  	// find missing root items
 	var missing = root.slice(0);
 	for (var x = 0; x < columns.length; x++) {
 		for (var y = 0; y < columns[x].length; y++) {
@@ -851,687 +859,304 @@ function verifyColumns() {
 			column.push(missing[i]);
 	}
 
-	// populate coordinate map
-	coords = {};
-	for (var x = 0; x < columns.length; x++) {
-		for (var y = 0; y < columns[x].length; y++) {
-			coords[columns[x][y]] = { x: x, y: y};
-		}
-		if (columns[x].length === 0) {
-			columns.splice(x, 1);
-			x--;
-		}
-	}
+  // populate coordinate map
+  coords = {};
+  for (var x = 0; x < columns.length; x++) {
+    for (var y = 0; y < columns[x].length; y++) {
+      coords[columns[x][y]] = { x: x, y: y };
+    }
+    if (columns[x].length === 0) {
+      columns.splice(x, 1);
+      x--;
+    }
+  }
 }
 
 // load columns from storage or default
 function loadColumns() {
-	columns = [];
-	for (var x = 0; ; x++) {
-		var row = [];
-		for (var y = 0; ; y++) {
-			var id = localStorage.getItem('column.' + x + '.' + y);
-			if (id) row.push(id); else break;
-		}
-		if (row.length > 0) columns.push(row); else break;
-	}
+  columns = [];
+  for (var x = 0; ; x++) {
+    var row = [];
+    for (var y = 0; ; y++) {
+      var id = localStorage.getItem('column.' + x + '.' + y);
+      if (id) row.push(id); else break;
+    }
+    if (row.length > 0) columns.push(row); else break;
+  }
 
-	if (root) {
-		verifyColumns();
-		renderColumns();
-	} else {
-		chrome.bookmarks.getTree(function(result) {
-			// init root nodes
-			var nodes = result[0].children;
-			root = special.slice(0);
+  if (root) {
+    verifyColumns();
+    renderColumns();
+  } else {
+    chrome.bookmarks.getTree(function (result) {
+      // init root nodes
+      var nodes = result[0].children;
 
-			for (var i = 0; i < nodes.length; i++)
-				root.push(nodes[i].id);
+      root = [];
+      for (var i = 0; i < nodes.length; i++)
+        root.push(nodes[i].id);
 
-			verifyColumns();
-			renderColumns();
-		});
-	}
+      verifyColumns();
+      renderColumns();
+    });
+  }
 }
 
 // saves current column configuration to storage
 function saveColumns() {
-	// clear previous config
-	for (var x = 0; ; x++) {
-		for (var y = 0; ; y++) {
-			var id = localStorage.getItem('column.' + x + '.' + y);
-			if (id)
-				localStorage.removeItem('column.' + x + '.' + y);
-			else
-				break;
-		}
-		if (y === 0)
-			break;
-	}
-	verifyColumns();
-	// save new config
-	for (var x = 0; x < columns.length; x++) {
-		for (var y = 0; y < columns[x].length; y++) {
-			localStorage.setItem('column.' + x +'.' + y, columns[x][y]);
-		}
-	}
-	// refresh
-	loadColumns();
+  // clear previous config
+  for (var x = 0; ; x++) {
+    for (var y = 0; ; y++) {
+      var id = localStorage.getItem('column.' + x + '.' + y);
+      if (id)
+        localStorage.removeItem('column.' + x + '.' + y);
+      else
+        break;
+    }
+    if (y === 0)
+      break;
+  }
+  verifyColumns();
+  // save new config
+  for (var x = 0; x < columns.length; x++) {
+    for (var y = 0; y < columns[x].length; y++) {
+      localStorage.setItem('column.' + x + '.' + y, columns[x][y]);
+    }
+  }
+  // refresh
+  loadColumns();
 }
 
 // creates and saves a new column
 function addColumn(ids, index) {
-	var column = ids.slice(0);
-	// remove previous locations
-	for (var x = 0; x < columns.length; x++) {
-		for (var y = 0; y < columns[x].length; y++ ) {
-			if (ids.indexOf(columns[x][y]) > -1) {
-				columns[x].splice(y, 1);
-				y--;
-			}
-		}
-	}
-	// insert new id
-	if (index == null)
-		index = columns.length;
-	columns.splice(Math.min(index, columns.length), 0, column);
+  var column = ids.slice(0);
+  // remove previous locations
+  for (var x = 0; x < columns.length; x++) {
+    for (var y = 0; y < columns[x].length; y++) {
+      if (ids.indexOf(columns[x][y]) > -1) {
+        columns[x].splice(y, 1);
+        y--;
+      }
+    }
+  }
+  // insert new id
+  if (index == null)
+    index = columns.length;
+  columns.splice(Math.min(index, columns.length), 0, column);
 
-	// save
-	saveColumns();
+  // save
+  saveColumns();
 }
 
 // removes given column
 function removeColumn(index) {
-	columns.splice(index, 1);
-	saveColumns();
+  columns.splice(index, 1);
+  saveColumns();
 }
 
 // creates and saves a new row
 function addRow(id, xpos, ypos) {
-	if (ypos == null)
-		ypos = columns[xpos].length;
+  if (ypos == null)
+    ypos = columns[xpos].length;
 
-	// remove previous locations
-	for (var x = 0; x < columns.length; x++) {
-		var i = columns[x].indexOf(id);
-		if (i > -1) {
-			columns[x].splice(i, 1);
-			if (x == xpos && ypos > i)
-				ypos--;
-		}
-		if (columns[x].length === 0) {
-			columns.splice(x, 1);
-			x--;
-			if (xpos > x)
-				xpos--;
-		}
-	}
-	// insert new id
-	columns[xpos].splice(Math.min(ypos, columns[xpos].length), 0, id);
+  // remove previous locations
+  for (var x = 0; x < columns.length; x++) {
+    var i = columns[x].indexOf(id);
+    if (i > -1) {
+      columns[x].splice(i, 1);
+      if (x == xpos && ypos > i)
+        ypos--;
+    }
+    if (columns[x].length === 0) {
+      columns.splice(x, 1);
+      x--;
+      if (xpos > x)
+        xpos--;
+    }
+  }
+  // insert new id
+  columns[xpos].splice(Math.min(ypos, columns[xpos].length), 0, id);
 
-	// save
-	saveColumns();
+  // save
+  saveColumns();
 }
 
 // removes given row
 function removeRow(xpos, ypos) {
-	columns[xpos].splice(ypos, 1);
-	saveColumns();
+  columns[xpos].splice(ypos, 1);
+  saveColumns();
 }
 
 // options : default values
 var config = {
-	font: 'Sans-serif',
-	font_size: 16,
-	font_weight: 400,
-	theme: 'Default',
-	font_color: '#555555',
-	background_color: '#ffffff',
-	highlight_color: '#e4f4ff',
-	highlight_font_color: '#000000',
-	shadow_color: '#57b0ff',
-	background_image_file: '',
-	background_image: '',
-	background_align: 'left top',
-	background_repeat: 'repeat',
-	background_size: 'auto',
-	shadow_blur: 1,
-	highlight_round: 1,
-	fade: 1,
-	spacing: 1,
-	width: 1,
-	h_pos: 1,
-	v_margin: 1,
-	slide: 1,
-	hide_options: 0,
-	lock: 0,
-	show_top: 0,
-	show_apps: 0,
-	show_recent: 0,
-	show_closed: 0,
-	show_devices: 0,
-	show_root: 1,
-	newtab: 2,
-	remember_open: 1,
-	auto_close: 0,
-	auto_scale: 1,
-	css: '',
-	number_top: 10,
-	number_closed: 10,
-	number_recent: 10
+  font: 'Sans-serif',
+  font_size: 16,
+  font_weight: 400,
+  theme: 'Default',
+  font_color: '#555555',
+  background_color: '#ffffff',
+  highlight_color: '#e4f4ff',
+  highlight_font_color: '#000000',
+  shadow_color: '#57b0ff',
+  background_image_file: '',
+  background_image: '',
+  background_align: 'left top',
+  background_repeat: 'repeat',
+  background_size: 'auto',
+  shadow_blur: 1,
+  highlight_round: 1,
+  fade: 1,
+  spacing: 1,
+  width: 1,
+  h_pos: 1,
+  v_margin: 1,
+  slide: 1,
+  hide_options: 0,
+  lock: 0,
+  show_top: 0,
+  show_apps: 0,
+  show_recent: 0,
+  show_closed: 0,
+  show_devices: 0,
+  show_root: 1,
+  newtab: 2,
+  remember_open: 1,
+  auto_close: 0,
+  auto_scale: 1,
+  css: '',
+  number_top: 10,
+  number_closed: 10,
+  number_recent: 10
 };
 
 // color theme values
 var themes = {
-	Default: {},
-	Classic: {
-		font_color: '#000000',
-		background_color: '#ffffff',
-		highlight_color: '#3399ff',
-		highlight_font_color: '#ffffff',
-		shadow_color: '#97cbff'
-	},
-	Dusk: {
-		font_color: '#c8b9be',
-		background_color: '#56546b',
-		highlight_color: '#494d5a',
-		highlight_font_color: '#ffd275',
-		shadow_color: '#000000'
-	},
-	Elegant: {
-		font_color: '#888888',
-		background_color: '#f6f6f6',
-		highlight_color: '#ffffff',
-		highlight_font_color: '#000000',
-		shadow_color: '#aaaaaa'
-	},
-	Frosty: {
-		font_color: '#3e5e82',
-		background_color: '#e4eef3',
-		highlight_color: '#0080c0',
-		highlight_font_color: '#ffffff',
-		shadow_color: '#8080ff'
-	},
-	Hacker: {
-		font_color: '#00ff00',
-		background_color: '#000000',
-		highlight_color: '#00ff00',
-		highlight_font_color: '#000000',
-		shadow_color: '#ff0000'
-	},
-	Melon: {
-		font_color: '#594526',
-		background_color: '#f8ffe1',
-		highlight_color: '#ff8000',
-		highlight_font_color: '#ffff80',
-		shadow_color: '#ff80c0'
-	},
-	Midnight: {
-		font_color: '#bfdfff',
-		background_color: '#101827',
-		highlight_color: '#000000',
-		highlight_font_color: '#80ecff',
-		shadow_color: '#0080ff'
-	},
-	Slate: {
-		font_color: '#555555',
-		background_color: '#b7babf',
-		highlight_color: '#aaaaaa',
-		highlight_font_color: '#000000',
-		shadow_color: '#2a2a2a'
-	},
-	Trees: {
-		font_color: '#cdd088',
-		background_color: '#566157',
-		highlight_color: '#4d674b',
-		highlight_font_color: '#ffff80',
-		shadow_color: '#183010'
-	},
-	Valentine: {
-		font_color: '#895fc2',
-		background_color: '#eae1ff',
-		highlight_color: '#ffb7f0',
-		highlight_font_color: '#f00000',
-		shadow_color: '#ffffff'
-	},
-	Warm: {
-		font_color: '#824100',
-		background_color: '#ffeedd',
-		highlight_color: '#fffae8',
-		highlight_font_color: '#800000',
-		shadow_color: '#d98764'
-	}
+  Default: {},
+  Classic: {
+    font_color: '#000000',
+    background_color: '#ffffff',
+    highlight_color: '#3399ff',
+    highlight_font_color: '#ffffff',
+    shadow_color: '#97cbff'
+  },
+  Dusk: {
+    font_color: '#c8b9be',
+    background_color: '#56546b',
+    highlight_color: '#494d5a',
+    highlight_font_color: '#ffd275',
+    shadow_color: '#000000'
+  },
+  Elegant: {
+    font_color: '#888888',
+    background_color: '#f6f6f6',
+    highlight_color: '#ffffff',
+    highlight_font_color: '#000000',
+    shadow_color: '#aaaaaa'
+  },
+  Frosty: {
+    font_color: '#3e5e82',
+    background_color: '#e4eef3',
+    highlight_color: '#0080c0',
+    highlight_font_color: '#ffffff',
+    shadow_color: '#8080ff'
+  },
+  Hacker: {
+    font_color: '#00ff00',
+    background_color: '#000000',
+    highlight_color: '#00ff00',
+    highlight_font_color: '#000000',
+    shadow_color: '#ff0000'
+  },
+  Melon: {
+    font_color: '#594526',
+    background_color: '#f8ffe1',
+    highlight_color: '#ff8000',
+    highlight_font_color: '#ffff80',
+    shadow_color: '#ff80c0'
+  },
+  Midnight: {
+    font_color: '#bfdfff',
+    background_color: '#101827',
+    highlight_color: '#000000',
+    highlight_font_color: '#80ecff',
+    shadow_color: '#0080ff'
+  },
+  Slate: {
+    font_color: '#555555',
+    background_color: '#b7babf',
+    highlight_color: '#aaaaaa',
+    highlight_font_color: '#000000',
+    shadow_color: '#2a2a2a'
+  },
+  Trees: {
+    font_color: '#cdd088',
+    background_color: '#566157',
+    highlight_color: '#4d674b',
+    highlight_font_color: '#ffff80',
+    shadow_color: '#183010'
+  },
+  Valentine: {
+    font_color: '#895fc2',
+    background_color: '#eae1ff',
+    highlight_color: '#ffb7f0',
+    highlight_font_color: '#f00000',
+    shadow_color: '#ffffff'
+  },
+  Warm: {
+    font_color: '#824100',
+    background_color: '#ffeedd',
+    highlight_color: '#fffae8',
+    highlight_font_color: '#800000',
+    shadow_color: '#d98764'
+  }
 };
 var theme = {};
 
 // get config value or default
 function getConfig(key) {
-	var value = localStorage.getItem('options.' + key);
-	if (value != null)
-		return typeof config[key] === 'number' ? Number(value) : value;
-	else
-		return (theme.hasOwnProperty(key) ? theme[key] : config[key]);
-}
-
-// set config value
-function setConfig(key, value) {
-	if (value != null)
-		localStorage.setItem('options.' + key, typeof config[key] === 'number' ? Number(value) : value);
-	else {
-		localStorage.removeItem('options.' + key);
-		value = (theme.hasOwnProperty(key) ? theme[key] : config[key]);
-	}
-	// special case settings
-	if (key == 'lock' || key == 'newtab' || key == 'show_root' || key.substring(0,6) == 'number')
-		loadColumns();
-	else if (key == 'theme') {
-		theme = themes[value];
-		for (var i in config) {
-			if (i != key) {
-				onChange(i);
-				showConfig(i);
-			}
-		}
-	} else if (key.substring(0,4) == 'show') {
-		var id = key.substring(5);
-		if (!value) {
-			if (coords[id])
-				removeRow(coords[id].x, coords[id].y);
-			saveColumns();
-		} else {
-			saveColumns();
-		}
-	}
-	onChange(key, value);
-	return value;
-}
-
-// map config keys to styles
-var styles = {};
-
-function getStyle(key, value) {
-	switch(key) {
-		case 'font':
-			return '#main a { font-family: "' + value + '"; }';
-		case 'font_size':
-			return '#main a { font-size: ' + (value / 10) + 'em; }';
-		case 'font_weight':
-			return '#main a { font-weight: ' + value + '; }';
-		case 'font_color':
-			return '#main a { color: ' + value + '; }';
-		case 'background_color':
-			return 'body { background-color: ' + value + '; }';
-		case 'background_image':
-			return 'body { background-image: url(' + value + '); }';
-		case 'background_image_file':
-			return 'body { background-image: url(' + value + '); }';
-		case 'background_align':
-			return 'body { background-position: ' + value + '; }';
-		case 'background_repeat':
-			return 'body { background-repeat: ' + value + '; }';
-		case 'background_size':
-			return 'body { background-size: ' + value + '; }';
-		case 'highlight_font_color':
-			return '#main a:hover { color: ' + value + '; }';
-		case 'highlight_color':
-			return '#main a:hover { background-color: ' + value + '; }';
-		case 'shadow_color':
-			return '#main a:hover { box-shadow: 0 0 ' + scale(getConfig('shadow_blur'), 7, 100) + 'px ' + value + '; }';
-		case 'shadow_blur':
-			return '#main a:hover { box-shadow: 0 0 ' + scale(value, 7, 100) + 'px ' + getConfig('shadow_color') + '; }';
-		case 'highlight_round':
-			return '#main a { border-radius: ' + scale(value, .2, 1.5) + 'em; }';
-		case 'fade':
-			return '#main a { transition-duration: ' + scale(value, .2, 1) + 's; }';
-		case 'slide':
-			return '.wrap { transition-duration: ' + scale(value, .2, 1) + 's; }';
-		case 'spacing':
-			return '#main a { line-height: ' + scale(value, 2, 5.6, .8) + '; ' +
-							'padding-left: ' + scale(value, .8, 2, .4) + 'em; ' +
-							'padding-right: ' + scale(value, .8, 2, .4) + 'em; }';
-		case 'width':
-			return '#main { width: ' + (getConfig('auto_scale') ?
-				scale(value, 80, 100, 20) + '%' :
-				scale(value, 1000, 3000, 400) + 'px') + '; }';
-		case 'h_pos':
-			var margin = 100 - scale(getConfig('width'), 80, 100, 20);
-			return '#main { left: ' + scale(value, 0, margin/2, -margin/2) + '%; }';
-		case 'v_margin':
-			return '#main { margin-top: ' + (getConfig('auto_scale') ?
-				scale(value, 5, 20) + '%' :
-				scale(value, 80, 600) + 'px') + '; }';
-		case 'hide_options':
-			return '#options_button { opacity: 0; }';
-		case 'css':
-			return value;
-		case 'auto_scale':
-			return value ? null : '#main { margin-top: 80px; width: 1000px; }';
-		default:
-			return null;
-	}
+  var value = localStorage.getItem('options.' + key);
+  if (value != null)
+    return typeof config[key] === 'number' ? Number(value) : value;
+  else
+    return (theme.hasOwnProperty(key) ? theme[key] : config[key]);
 }
 
 // scales input value from [0,1,2] to [min,mid,max]
 function scale(value, mid, max, min) {
-	min = min || 0;
-	return value > 1 ?
-		mid + (value - 1) * (max - mid) :
-		min + value * (mid - min);
+  min = min || 0;
+  return value > 1 ?
+    mid + (value - 1) * (max - mid) :
+    min + value * (mid - min);
 }
 
 // gets rgb representation of hex color
 function hexToRgb(hex) {
-	hex = /[a-f\d]{6}/i.exec(hex);
-	var bigint = parseInt(hex, 16);
-	var r = (bigint >> 16) & 255;
-	var g = (bigint >> 8) & 255;
-	var b = bigint & 255;
-	return r + "," + g + "," + b;
+  hex = /[a-f\d]{6}/i.exec(hex);
+  var bigint = parseInt(hex, 16);
+  var r = (bigint >> 16) & 255;
+  var g = (bigint >> 8) & 255;
+  var b = bigint & 255;
+  return r + "," + g + "," + b;
 }
 
-// apply config value change
-function onChange(key, value) {
-	if (value == null)
-		value = getConfig(key);
-
-	if (value != config[key]) {
-		var css = getStyle(key, value);
-		if (css) {
-			var style;
-			if (styles.hasOwnProperty(key))
-				style = styles[key];
-			else {
-				style = document.createElement('style');
-				styles[key] = style;
-			}
-			document.head.appendChild(style);
-
-			// add style rules
-			style.innerText = css;
-		}
-	} else if (styles.hasOwnProperty(key)) {
-		// remove rules
-		styles[key].parentNode.removeChild(styles[key]);
-		delete styles[key];
-	}
-	// refresh dependent values
-	if (key == 'width')
-		onChange('h_pos');
-	else if (key == 'shadow_blur')
-		onChange('shadow_color');
-	else if (key == 'auto_scale') {
-		onChange('width');
-		onChange('v_margin');
-	}
-
-	// update options panel
-	if (!settingsInitialized)
-		return;
-
-	// show/hide default button
-	var input = document.getElementById('options_' + key);
-	if (input) {
-		var isDefault = value == (theme.hasOwnProperty(key) ? theme[key] : config[key]);
-    if(input && input.reset && input.reset.style) {
-		  input.reset.style.visibility = (isDefault ? 'hidden' : null);
-    }
-
-		if (input.swatch)
-			input.swatch.value = value;
-	}
-}
-
-// loads config settings
-function loadSettings() {
-	// load theme
-	theme = themes[getConfig('theme')] || {};
-	// load settings
-	for (var key in config)
-		if (key === 'background_image_file')
-			setTimeout(function() { onChange('background_image_file'); }, 0);
-		else
-			onChange(key);
-}
-
-// apply config values to input controls
-function showConfig(key) {
-	var input = document.getElementById('options_' + key);
-	if (!input || input.type === 'file')
-		return;
-
-	input[input.type === 'checkbox' ? 'checked' : 'value'] = getConfig(key);
-}
-
-// initialize config settings
-function initConfig(key) {
-	var input = document.getElementById('options_' + key);
-	if (!input)
-		return;
-
-	if (input.type == 'color') {
-		input.type = 'text';
-		input.className = 'color';
-		var swatch = document.createElement('input');
-		swatch.type = 'color';
-		swatch.value = input.value;
-		swatch.oninput = function(event) {
-			input.value = this.value;
-			return input.onchange(event);
-		};
-		input.swatch = swatch;
-		input.parentNode.appendChild(swatch);
-	}
-	input.onchange = function(event) {
-		if (input.type == 'file') {
-			// load file
-			if (event.target.files.length == 1) {
-				var file = event.target.files[0];
-				if (file.size > 2097152) {
-					input.value = null;
-					alert('Image must be less than 2 MB.');
-					return false;
-				}
-				var reader = new FileReader();
-				reader.onload = function(f) {
-					if (f.target.result)
-						setConfig(key, f.target.result);
-				};
-				reader.readAsDataURL(file);
-			}
-		} else
-			setConfig(key, input.type == 'checkbox' ? Number(input.checked) : input.value);
-	};
-
-	var reset = document.createElement('a');
-	reset.className = 'revert';
-	reset.title = 'Reset to default';
-	reset.tabIndex = 0;
-	reset.onclick = function() {
-		setConfig(key, null);
-		showConfig(key);
-		return false;
-	};
-
-	input.reset = reset;
-	input.parentNode.appendChild(reset);
-	showConfig(key);
-}
-
-var settingsInitialized = false;
-
-// initialize options panel
-function initSettings() {
-	settingsInitialized = true;
-
-	// options close button
-	document.getElementById('options_close_button').onclick = function() {
-		showOptions(false);
-		return false;
-	};
-
-	// options submenu navigation
-	var options = document.getElementById('options');
-	var nav = document.getElementById('options_nav');
-	var index = 0;
-	for (var i=0; i<nav.children.length; i++) {
-		var a = nav.children[i].firstChild;
-		a.onclick = function(e) {
-			// clear current style
-			nav.children[index].firstChild.classList.remove('current');
-			options.getElementsByClassName('section')[index].classList.remove('current');
-			// apply new current style
-			index = Array.prototype.indexOf.call(nav.children, this.parentNode);
-			nav.children[index].firstChild.classList.add('current');
-			options.getElementsByClassName('section')[index].classList.add('current');
-			// show custom css on advanced tab
-			if (index === nav.children.length-1) {
-				var allcss = document.getElementById('all_css');
-				allcss.value = '';
-				for (var key in config) {
-					var css = (getStyle(key, getConfig(key)));
-					if (css && css.length < 1000 && key != 'css')
-						allcss.value += css + '\n';
-				}
-			}
-			// import/export
-			if (index === nav.children.length-2) {
-				var exports = document.getElementById('options_export');
-				var imports = document.getElementById('options_import');
-				var replacer = function(key, value) {
-					if (key == 'options.background_image_file' || key == 'weather.cache') {
-						return undefined;
-					}
-					return value;
-				};
-				exports.value = JSON.stringify(localStorage, replacer);
-				imports.value = '';
-				imports.placeholder = 'Paste exported settings here';
-				imports.onchange = function() {
-					try {
-						var imported = JSON.parse(imports.value);
-						for(var key in imported) {
-							localStorage.setItem(key, imported[key]);
-						}
-						imports.value = '';
-						imports.placeholder = 'Import successful!';
-						exports.value = JSON.stringify(localStorage, replacer);
-						loadSettings();
-						loadColumns();
-					} catch (e) {
-						imports.value = '';
-						imports.placeholder = 'Import error! Please check if your settings are valid JSON.';
-					}
-				};
-			}
-			return false;
-		};
-	}
-
-	// add options to hide bookmark folders
-	chrome.bookmarks.getTree(function(result) {
-		var placeholder = document.getElementById('options_show_bookmarks');
-		var nodes = result[0].children;
-		for (var i = 0; i < nodes.length; i++) {
-			var key = 'show_' + nodes[i].id;
-			config[key] = 1;
-
-			var span = document.createElement('span');
-			span.innerText = nodes[i].title;
-
-			var input = document.createElement('input');
-			input.type = 'checkbox';
-			input.id = 'options_' + key;
-
-			var label = document.createElement('label');
-			label.appendChild(span);
-			label.appendChild(input);
-			placeholder.appendChild(label);
-		}
-
-		// replace text input with system font list
-		if (chrome.fontSettings) {
-			var input = document.getElementById('options_font');
-			var select = document.createElement('select');
-			input.parentNode.replaceChild(select, input);
-			select.id = input.id;
-		}
-
-		// show settings
-		for (var key in config)
-			initConfig(key);
-
-		loadSettings();
-
-		// load themes
-		var select = document.getElementById('options_theme');
-		if (select.childNodes.length === 0) {
-			for (var i in themes) {
-				var option = document.createElement('option');
-				option.innerText = i;
-				if (i == getConfig('theme'))
-					option.selected = 'selected';
-				select.appendChild(option);
-			}
-		}
-
-		// load font list
-		if (chrome.fontSettings) {
-			chrome.fontSettings.getFontList(function(fonts) {
-				var select = document.getElementById('options_font');
-				if (select.childNodes.length > 0)
-					return;
-
-				fonts.unshift({ fontId: 'Sans-serif' });
-				for (var i = 0; i < fonts.length; i++) {
-					var font = fonts[i].fontId;
-					var option = document.createElement('option');
-					option.innerText = font;
-					if (font == getConfig('font'))
-						option.selected = 'selected';
-					select.appendChild(option);
-				}
-			});
-		}
-	});
-}
-
-// show options panel
-function showOptions(show) {
-	document.getElementById('options').style.display = show ? 'block' : 'none';
-	if (show) {
-		if (!settingsInitialized)
-			initSettings();
-		for (var key in config)
-			showConfig(key);
-	}
-}
-
-// initialize page
-loadSettings();
 loadColumns();
 
 // keyboard shortcuts
-document.addEventListener('keypress', function(event) {
-	if (event.keyCode == 13 && event.target && event.target.onclick && event.target.tagName == 'A') {
-		event.target.dispatchEvent(new MouseEvent('click'));
-		event.preventDefault();
-	}
+document.addEventListener('keypress', function (event) {
+  if (event.keyCode == 13 && event.target && event.target.onclick && event.target.tagName == 'A') {
+    event.target.dispatchEvent(new MouseEvent('click'));
+    event.preventDefault();
+  }
 });
-document.addEventListener('mousedown', function(event) {
-	document.body.classList.add('hide-focus');
+document.addEventListener('mousedown', function (event) {
+  document.body.classList.add('hide-focus');
 });
-document.addEventListener('keydown', function(event) {
-	document.body.classList.remove('hide-focus');
+document.addEventListener('keydown', function (event) {
+  document.body.classList.remove('hide-focus');
 });
 
-window.onresize = function(event) {
-	updateTooltips();
-};
-
-// load options panel
-document.getElementById('options_button').onclick = function() {
-	showOptions(true);
-	return false;
+window.onresize = function (event) {
+  updateTooltips();
 };
 
 document.getElementById('saveButton').onclick = function () {
@@ -1543,14 +1168,11 @@ document.getElementById('saveButton').onclick = function () {
   chrome.bookmarks.update(name.dataset.id, {
     'title': name.value,
     'url': url.href
-  }, (result) => {    
-    localStorage.removeItem('open.'+result.id);
+  }, (result) => {
+    localStorage.removeItem('open.' + result.id);
     console.log(result);
     loadColumns();
   });
   var modalToggle = document.getElementById('modal-toggle');
-  modalToggle.checked =  false;
+  modalToggle.checked = false;
 }
-
-if (location.search === '?options')
-	showOptions(true);

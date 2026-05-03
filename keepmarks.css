@@ -77,6 +77,12 @@ body {
 #main .empty {
 	opacity: 0.5;
 }
+
+#main li {
+  border-top: 2px solid white;
+  border-bottom: 2px solid white;
+}
+
 .menu {
 	position: absolute;
 	white-space: nowrap;
@@ -116,13 +122,31 @@ body {
 .dragstart {
 	opacity: 0.5;
 }
+
+#main .extracted a {
+  background-color: #eee;  
+  background: linear-gradient(#cee5fa);
+  cursor: not-allowed;
+}
+
+#main .extracted a:hover {
+  /* background: linear-gradient(#eee);   */
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Top level elements */
+#main .column > ul > li > a {
+  background: linear-gradient(#eee);
+}
+
+#main .column > ul > li > a:hover {
+  background: linear-gradient(#eee);
+  box-shadow: 0px 0px 3px black;
+}
+
 .hide-focus :focus {
 	outline: none;
-}
-#options, #options_button {
-	position: absolute;
-	top: 0;
-	right: 0;
 }
 
 .modal {
@@ -149,24 +173,22 @@ body {
 }
 
 #saveButton {
-  position: absolute;
-  right: 37px;
-  top: 191px;
-  padding: 11px 15px;
+  padding: 5px 15px;
   border: 1px solid currentColor;
   cursor: pointer;
-  margin: 0px;
+  margin: 0px 31px 0px 8px;
   border-radius: 7px;
   background-color: teal;
   color: white;
-  font-size: medium;
   font-weight: bold;
 }
 
+#saveButton span{
+  font-weight: 800;
+  font-size: medium;
+}
+
 .close-button {
-  position: absolute;
-  right: 119px;
-  top: 195px;
   padding: 2px 8px;
   border: 1px solid currentColor;
   cursor: pointer;
@@ -196,10 +218,10 @@ body {
   pointer-events: all;
 }
 
-.buttonContainer {
-  margin: 0 auto;
-  text-align: center;
-  height: 51px;
+.btn-wrapper {
+  display: flex;
+  justify-content:end;
+  margin-top: 11px;
 }
 
 #modal-toggle{
@@ -217,26 +239,15 @@ body {
   position:relative;
   font-size: 1.4em;
 	color: #000;
-	border: solid #999;
-	border-width: 0 0 1px 1px;
-	border-bottom-left-radius: 3px;
-	box-shadow: 0 7px 7px rgba(0, 0, 0, 0.3);
 	min-width: 32em;
 	min-height: 10em;
-  background-color: #EEE;
 	list-style: none;
 	margin: 0;
 	padding: 0;
-	border-right: solid 1px #ccc;
-}
-
-#edit_bookmark{
-  /* top:0%; */
-  /* display: flex; */
-  margin: 0 auto;
-  border-top: 19px solid teal;
-  border-radius: 5px;
-  /* right: 50%; */
+  background-color: #EEE;
+	border-top: 31px solid teal;
+  border-radius: 15px;  
+  box-shadow: 15px 15px 11px rgba(0, 0, 0, 0.3);
 }
 
 #edit_bookmark h3{
@@ -246,7 +257,6 @@ body {
 }
 
 #edit_bookmark fieldset {
-  /* margin-top: 0px; */
   margin: 0px auto 15px;
 }
 
@@ -259,86 +269,11 @@ body {
 #edit_bookmark span{
   float: left;
 	text-align: left;
-	line-height: 1.9;
-  font-size: medium;
+	/* line-height: 2; */
+  font-size: small;  
+  margin: 0px;
 }
 
-#options {
-	display: none;
-	font-size: 1.4em;
-	color: #000;
-	border: solid #999;
-	border-width: 0 0 1px 1px;
-	border-bottom-left-radius: 3px;
-	box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
-	min-width: 32em;
-	min-height: 10em;
-}
-#options_nav {
-	position: absolute;
-	width: 10em;
-	top: -1px;
-	bottom: 0;
-	background-color: #EEE;
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	border-right: solid 1px #ccc;
-}
-#options_nav a {
-	display: block;
-	padding: 1em 2em;
-	text-decoration: none;
-	color: inherit;
-	border: solid transparent;
-	border-width: 1px 0;
-	cursor: pointer;
-}
-#options_nav a:hover {
-	background-color: #E4F4FF;
-	outline: solid thin #57B0FF;
-}
-#options_nav a.current {
-	color: #000;
-	background-color: #FAFAFA;
-	border-color: #CCC;
-	margin-right: -1px;
-	outline: none;
-}
-#options .section {
-	margin-left: 10em;
-	margin-top: -1px;
-	padding: 1px 0;
-	background-color: #FAFAFA;
-	display: none;
-}
-#options .section.current {
-	display: block;
-}
-#options_button {
-	background: transparent no-repeat center center;
-	width: 32px;
-	height: 32px;
-	opacity: 0.6;
-	cursor: pointer;
-}
-#options_button:hover {
-	opacity: 1;
-}
-#options_close_button {
-	color: #000;
-	text-align: center;
-	text-decoration: none;
-	font-size: 1.4em;
-	position: absolute;
-	top: 0;
-	right: 0;
-	display: block;
-	width: 32px;
-	height: 32px;
-	line-height: 32px;
-	cursor: pointer;
-}
 legend {
 	color: #888;
 }
@@ -390,24 +325,7 @@ input[type="color"]::-webkit-color-swatch-wrapper {
 input[type="file"]::-webkit-file-upload-button {
 	width: 100%;
 }
-.subopt {
-	margin: 0 0 .8em 2.5em;
-}
-.subopt input {
-	width: 4em;
-}
-.revert {
-	display: inline-block;
-	width: 18px;
-	height: 16px;
-	opacity: .5;
-	background-image: -webkit-image-set(url("icons/revert.png") 1x, url("icons/revert@2x.png") 2x);
-	background-size: 100%;
-	cursor: pointer;
-}
-.revert:hover {
-	opacity: 1;
-}
+
 .folder .icon {
 	background-image: -webkit-image-set(url("icons/folder.png") 1x, url("icons/folder@2x.png") 2x);
 }
@@ -417,6 +335,7 @@ input[type="file"]::-webkit-file-upload-button {
 .empty .icon {
 	display: none;
 }
+
 /* The following icons are copyright (c) 2012 The Chromium Authors.
    see LICENSE_chromium_BSD.txt */
 .recent .icon {
@@ -436,7 +355,4 @@ input[type="file"]::-webkit-file-upload-button {
 }
 .error .icon {
 	background-image: -webkit-image-set(url("icons/error.png") 1x, url("icons/error@2x.png") 2x);
-}
-#options_button {
-	background-image: -webkit-image-set(url("icons/options.png") 1x, url("icons/options@2x.png") 2x);
 }
