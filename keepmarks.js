@@ -30,7 +30,7 @@ function render(node, target, toplevel) {
   } else if (url) {
     // new background tab
     a.onclick = function (e) {
-      openLink(node, newtab);
+      openLink(node, 2);
       return false;
     };
 
@@ -38,7 +38,7 @@ function render(node, target, toplevel) {
     var urlStart = url.substring(0, 6);
     if (urlStart === 'chrome' || urlStart === 'file:/') {
       a.onclick = function (e) {
-        openLink(node, newtab || (e.ctrlKey ? 2 : 0));
+        openLink(node, 2 || (e.ctrlKey ? 2 : 0));
         return false;
       };
       a.onauxclick = function (e) {
@@ -56,12 +56,12 @@ function render(node, target, toplevel) {
   // folder
   if (node.children) {
     var extracted = false
-    if(!toplevel && coords[node.id]) {
+    if (!toplevel && coords[node.id]) {
       extracted = true;
       li.classList.add('extracted');
     } else {
       // render children
-      if (a.open || getConfig('remember_open') && localStorage.getItem('open.' + node.id)) {
+      if (a.open || localStorage.getItem('open.' + node.id)) {
         setClass(a, node, true);
         a.open = true;
         getChildrenFunction(node)(function (result) {
@@ -72,7 +72,7 @@ function render(node, target, toplevel) {
 
     // click handlers
     addFolderHandlers(node, a, extracted);
-    if(!toplevel && !coords[node.id])
+    if (!toplevel && !coords[node.id])
       enableDragFolder(node, a);
   } else { // A single bookmark
     addBookmarkHandlers(node, a);
@@ -120,7 +120,7 @@ function renderColumn(index, target) {
       else {
         // render node list
         renderAll(nodes, target, true);
-  			addColumnHandlers(index, target);
+        addColumnHandlers(index, target);
       }
     };
     getSubTree(ids[i], callback);
@@ -165,6 +165,7 @@ function deleteBookmark(id, a) {
     loadColumns();
   });
 }
+
 // enables click and context menu for given Bookmark
 function addBookmarkHandlers(node, a) {
   // context menu handler
@@ -200,7 +201,7 @@ function addBookmarkHandlers(node, a) {
 
 // enables click and context menu for given folder
 function addFolderHandlers(node, a, extracted) {
-  if(!extracted) // Toggle disabled for extracted nodes
+  if (!extracted) // Toggle disabled for extracted nodes
     // click handler
     a.onclick = function () {
       toggle(node, a, getChildrenFunction(node));
@@ -212,7 +213,7 @@ function addFolderHandlers(node, a, extracted) {
 
   // column layout items
   items.push(null);// spacer
-  if(!extracted)
+  if (!extracted && !coords[node.id])
     items.push({
       label: 'Extract new column',
       action: function () {
@@ -220,7 +221,7 @@ function addFolderHandlers(node, a, extracted) {
       }
     });
 
-  if (coords[node.id] && !extracted) {
+  if (!extracted && coords[node.id]) {
     var pos = coords[node.id];
     if (pos.y > 0)
       items.push({
@@ -257,6 +258,14 @@ function addFolderHandlers(node, a, extracted) {
           removeRow(pos.x, pos.y);
         }
       });
+  } else if (extracted && coords[node.id] && root.indexOf(node.id) < 0) {
+    var pos = coords[node.id]
+    items.push({
+      label: 'Retract folder view',
+      action: function () {
+        removeRow(pos.x, pos.y);
+      }
+    });
   }
 
   a.oncontextmenu = function (event) {
@@ -267,61 +276,61 @@ function addFolderHandlers(node, a, extracted) {
 
 // enables context menu for given column
 function addColumnHandlers(index, ul) {
-	var items = [];
-	var ids = columns[index];
+  var items = [];
+  var ids = columns[index];
 
-	// single folder items
-	if (ids.length == 1)
-		items = getMenuItems({id: ids[0]});
+  // single folder items
+  if (ids.length == 1)
+    items = getMenuItems({ id: ids[0] });
 
-	// column layout items
-	if (columns.length > 1) {
-		items.push(null);// spacer
-		if (index > 0)
-			items.push({
-				label: 'Move column left',
-				action: function() {
-					addColumn(ids, index - 1);
-				}
-			});
-		if (index < columns.length - 1)
-			items.push({
-				label: 'Move column right',
-				action: function() {
-					addColumn(ids, index + 2);
-				}
-			});
-		items.push({
-			label: 'Remove column',
-			action: function() {
-				removeColumn(index);
-			}
-		});
-		if (ids.length == 1) {
-			if (index > 0)
-				items.push({
-					label: 'Move folder left',
-					action: function() {
-						addRow(ids[0], index - 1);
-					}
-				});
-			if (index < columns.length - 1)
-				items.push({
-					label: 'Move folder right',
-					action: function() {
-						addRow(ids[0], index + 1);
-					}
-				});
-		}
-	}
+  // column layout items
+  if (columns.length > 1) {
+    items.push(null);// spacer
+    if (index > 0)
+      items.push({
+        label: 'Move column left',
+        action: function () {
+          addColumn(ids, index - 1);
+        }
+      });
+    if (index < columns.length - 1)
+      items.push({
+        label: 'Move column right',
+        action: function () {
+          addColumn(ids, index + 2);
+        }
+      });
+    items.push({
+      label: 'Remove column',
+      action: function () {
+        removeColumn(index);
+      }
+    });
+    if (ids.length == 1) {
+      if (index > 0)
+        items.push({
+          label: 'Move folder left',
+          action: function () {
+            addRow(ids[0], index - 1);
+          }
+        });
+      if (index < columns.length - 1)
+        items.push({
+          label: 'Move folder right',
+          action: function () {
+            addRow(ids[0], index + 1);
+          }
+        });
+    }
+  }
 
-	if (items.length > 0)
-		ul.oncontextmenu = function(event) {
-			if (event.target.tagName == 'A' || event.target.parentNode.tagName == 'A')
-				return true;
-			renderMenu(items, event.pageX, event.pageY);
-			return false;
-		};
+  if (items.length > 0)
+    ul.oncontextmenu = function (event) {
+      if (event.target.tagName == 'A' || event.target.parentNode.tagName == 'A')
+        return true;
+      renderMenu(items, event.pageX, event.pageY);
+      return false;
+    };
 }
 
 // gets context menu items for given node
@@ -435,29 +444,29 @@ function enableDragBookmark(node, a) {
 
 // enable drag and drop of folder
 function enableDragFolder(node, a) {
-	a.draggable = true;
-	a.ondragstart = function(event) {
-		dragIds = [node.id];
-		event.stopPropagation();
-		event.dataTransfer.effectAllowed = 'move copy';
-		this.classList.add('dragstart');
+  a.draggable = true;
+  a.ondragstart = function (event) {
+    dragIds = [node.id];
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move copy';
+    this.classList.add('dragstart');
     var liContainer = this.parentNode;
-    if(liContainer && liContainer.tagName == 'LI'){
+    if (liContainer && liContainer.tagName == 'LI') {
       disabledBoundedRect = liContainer.getBoundingClientRect();
       disabledScrollX = window.scrollX;
       disabledScrollY = window.scrollY;
     }
-	};
-	a.ondragend = function(event) {
-		dragIds = null;
-		this.classList.remove('dragstart');
-		clearDropTarget();
-    if(disabledBoundedRect){
+  };
+  a.ondragend = function (event) {
+    dragIds = null;
+    this.classList.remove('dragstart');
+    clearDropTarget();
+    if (disabledBoundedRect) {
       disabledBoundedRect = null;
       disabledScrollX = null;
       disabledScrollY = null;
-    }    
-	};
+    }
+  };
 }
 
 // init drag and drop handlers
@@ -503,7 +512,7 @@ function enableDragDrop() {
       var parentAnchor = liParent?.firstChild;
       var targetParentID = parentAnchor.dataset.id;
 
-      if(targetID == 'empty'){
+      if (targetID == 'empty') {
         // Dropping on an empty node is much simpler to perform
         chrome.bookmarks.move(draggedID, {
           'parentId': targetParentID,
@@ -521,8 +530,8 @@ function enableDragDrop() {
 
       // Now, to make the required move
       chrome.bookmarks.getChildren(targetParentID, (result) => {
-        var result_ids = result.map((item) => item['id']);        
-        var target_idx = result_ids.indexOf(targetID);        
+        var result_ids = result.map((item) => item['id']);
+        var target_idx = result_ids.indexOf(targetID);
         if (target_idx == -1) // Target was not found in this case
           return;
 
@@ -573,7 +582,7 @@ function getDropTarget(event) {
 
   // If Target element is empty, then enforce upper half logic.
   var anchorElem = target.firstChild;
-  if(anchorElem.dataset.id == 'empty') {
+  if (anchorElem.dataset.id == 'empty') {
     // Dropping on an empty element can only be added above.
     inLowerHalf = false;
     return target;
@@ -732,37 +741,19 @@ function toggle(node, a) {
     // close folder
     localStorage.removeItem('open.' + node.id);
     if (a.nextSibling) {
-      // auto-close child folders
-      if (getConfig('auto_close')) {
-        var children = (a.nextSibling.tagName == 'DIV' ? a.nextSibling.firstChild : a.nextSibling).children;
-        for (var i = 0; i < children.length; i++) {
-          var child = children[i].firstChild;
-          if (child.open)
-            child.onclick();
-        }
-      }
       // close folder
       animate(node, a, isopen);
     }
   } else {
     // open folder
     localStorage.setItem('open.' + node.id, true);
-    // auto-close sibling folders
-    if (getConfig('auto_close')) {
-      var siblings = a.parentNode.parentNode.children;
-      for (var i = 0; i < siblings.length; i++) {
-        var sibling = siblings[i].firstChild;
-        if (sibling != a && sibling.open)
-          sibling.onclick();
-      }
-    }
     // open folder
     if (a.nextSibling)
       animate(node, a, isopen);
     else
       getChildrenFunction(node)(function (result) {
         if (!a.nextSibling && a.open) {
-          renderAll(result, a.parentNode);
+          renderAll(result, a.parentNode, false);
           animate(node, a, isopen);
         }
       });
@@ -795,7 +786,7 @@ function animate(node, a, isopen) {
     });
   });
 
-  var duration = scale(getConfig('slide'), .2, 1) * 1000;
+  var duration = scale(1, .2, 1) * 1000;
   a.animationHandle = setTimeout(function () {
     a.animationHandle = null;
     if (isopen)
@@ -842,22 +833,21 @@ function verifyColumns() {
     columns.push([]);
   }
 
-  	// find missing root items
-	var missing = root.slice(0);
-	for (var x = 0; x < columns.length; x++) {
-		for (var y = 0; y < columns[x].length; y++) {
-			var i = missing.indexOf(columns[x][y]);
-			if (i > -1)
-				missing.splice(i, 1);
-		}
-	}
+  // find missing root items
+  var missing = root.slice(0);
+  for (var x = 0; x < columns.length; x++) {
+    for (var y = 0; y < columns[x].length; y++) {
+      var i = missing.indexOf(columns[x][y]);
+      if (i > -1)
+        missing.splice(i, 1);
+    }
+  }
 
-	// add missing root items
-	var column = columns[0];
-	for (var i = 0; i < missing.length; i++) {
-		if (getConfig('show_' + missing[i]) != false)
-			column.push(missing[i]);
-	}
+  // add missing root items
+  var column = columns[0];
+  for (var i = 0; i < missing.length; i++) {
+    column.push(missing[i]);
+  }
 
   // populate coordinate map
   coords = {};
@@ -987,140 +977,6 @@ function removeRow(xpos, ypos) {
   saveColumns();
 }
 
-// options : default values
-var config = {
-  font: 'Sans-serif',
-  font_size: 16,
-  font_weight: 400,
-  theme: 'Default',
-  font_color: '#555555',
-  background_color: '#ffffff',
-  highlight_color: '#e4f4ff',
-  highlight_font_color: '#000000',
-  shadow_color: '#57b0ff',
-  background_image_file: '',
-  background_image: '',
-  background_align: 'left top',
-  background_repeat: 'repeat',
-  background_size: 'auto',
-  shadow_blur: 1,
-  highlight_round: 1,
-  fade: 1,
-  spacing: 1,
-  width: 1,
-  h_pos: 1,
-  v_margin: 1,
-  slide: 1,
-  hide_options: 0,
-  lock: 0,
-  show_top: 0,
-  show_apps: 0,
-  show_recent: 0,
-  show_closed: 0,
-  show_devices: 0,
-  show_root: 1,
-  newtab: 2,
-  remember_open: 1,
-  auto_close: 0,
-  auto_scale: 1,
-  css: '',
-  number_top: 10,
-  number_closed: 10,
-  number_recent: 10
-};
-
-// color theme values
-var themes = {
-  Default: {},
-  Classic: {
-    font_color: '#000000',
-    background_color: '#ffffff',
-    highlight_color: '#3399ff',
-    highlight_font_color: '#ffffff',
-    shadow_color: '#97cbff'
-  },
-  Dusk: {
-    font_color: '#c8b9be',
-    background_color: '#56546b',
-    highlight_color: '#494d5a',
-    highlight_font_color: '#ffd275',
-    shadow_color: '#000000'
-  },
-  Elegant: {
-    font_color: '#888888',
-    background_color: '#f6f6f6',
-    highlight_color: '#ffffff',
-    highlight_font_color: '#000000',
-    shadow_color: '#aaaaaa'
-  },
-  Frosty: {
-    font_color: '#3e5e82',
-    background_color: '#e4eef3',
-    highlight_color: '#0080c0',
-    highlight_font_color: '#ffffff',
-    shadow_color: '#8080ff'
-  },
-  Hacker: {
-    font_color: '#00ff00',
-    background_color: '#000000',
-    highlight_color: '#00ff00',
-    highlight_font_color: '#000000',
-    shadow_color: '#ff0000'
-  },
-  Melon: {
-    font_color: '#594526',
-    background_color: '#f8ffe1',
-    highlight_color: '#ff8000',
-    highlight_font_color: '#ffff80',
-    shadow_color: '#ff80c0'
-  },
-  Midnight: {
-    font_color: '#bfdfff',
-    background_color: '#101827',
-    highlight_color: '#000000',
-    highlight_font_color: '#80ecff',
-    shadow_color: '#0080ff'
-  },
-  Slate: {
-    font_color: '#555555',
-    background_color: '#b7babf',
-    highlight_color: '#aaaaaa',
-    highlight_font_color: '#000000',
-    shadow_color: '#2a2a2a'
-  },
-  Trees: {
-    font_color: '#cdd088',
-    background_color: '#566157',
-    highlight_color: '#4d674b',
-    highlight_font_color: '#ffff80',
-    shadow_color: '#183010'
-  },
-  Valentine: {
-    font_color: '#895fc2',
-    background_color: '#eae1ff',
-    highlight_color: '#ffb7f0',
-    highlight_font_color: '#f00000',
-    shadow_color: '#ffffff'
-  },
-  Warm: {
-    font_color: '#824100',
-    background_color: '#ffeedd',
-    highlight_color: '#fffae8',
-    highlight_font_color: '#800000',
-    shadow_color: '#d98764'
-  }
-};
-var theme = {};
-
-// get config value or default
-function getConfig(key) {
-  var value = localStorage.getItem('options.' + key);
-  if (value != null)
-    return typeof config[key] === 'number' ? Number(value) : value;
-  else
-    return (theme.hasOwnProperty(key) ? theme[key] : config[key]);
-}
-
 // scales input value from [0,1,2] to [min,mid,max]
 function scale(value, mid, max, min) {
   min = min || 0;
@@ -1165,6 +1021,7 @@ document.getElementById('saveButton').onclick = function () {
   if (!name?.dataset?.id) {
     return
   }
+
   chrome.bookmarks.update(name.dataset.id, {
     'title': name.value,
     'url': url.href
@@ -1173,6 +1030,7 @@ document.getElementById('saveButton').onclick = function () {
     console.log(result);
     loadColumns();
   });
+
   var modalToggle = document.getElementById('modal-toggle');
   modalToggle.checked = false;
 }
