@@ -48,18 +48,15 @@ function render(node, target, toplevel) {
         }
       }
     }
-  } else if (!node.children)
-    a.style.pointerEvents = 'none';
+  }
 
   li.appendChild(a);
 
   // folder
   if (node.children) {
-    var extracted = false
-    if (!toplevel && coords[node.id]) {
-      extracted = true;
-      li.classList.add('extracted');
-    } else {
+    // Determines if it is an inner folder extracted out
+    var extracted = !toplevel && coords[node.id];
+    if (!extracted) {
       // render children
       if (a.open || localStorage.getItem('open.' + node.id)) {
         setClass(a, node, true);
@@ -68,11 +65,13 @@ function render(node, target, toplevel) {
           renderAll(result, li);
         });
       }
+    } else {
+      li.classList.add('extracted');
     }
 
     // click handlers
     addFolderHandlers(node, a, extracted);
-    if (!toplevel && !coords[node.id])
+    if (!toplevel && !extracted)
       enableDragFolder(node, a);
   } else { // A single bookmark
     addBookmarkHandlers(node, a);
@@ -201,7 +200,7 @@ function addBookmarkHandlers(node, a) {
 
 // enables click and context menu for given folder
 function addFolderHandlers(node, a, extracted) {
-  if (!extracted) // Toggle disabled for extracted nodes
+  if (!extracted) // Toggle disabled for original nodes that were extracted out
     // click handler
     a.onclick = function () {
       toggle(node, a, getChildrenFunction(node));
@@ -258,7 +257,9 @@ function addFolderHandlers(node, a, extracted) {
           removeRow(pos.x, pos.y);
         }
       });
-  } else if (extracted && coords[node.id] && root.indexOf(node.id) < 0) {
+  } 
+  
+  if (extracted && coords[node.id] && root.indexOf(node.id) < 0) {
     var pos = coords[node.id]
     items.push({
       label: 'Retract folder view',
@@ -681,8 +682,7 @@ function getSubTree(id, callback) {
     if (result)
       callback(result);
     else {
-      // remove missing bookmark locations
-      if (coords[id])
+      if (coords[id])       // remove missing bookmark locations
         removeRow(coords[id].x, coords[id].y);
     }
   });
@@ -786,7 +786,7 @@ function animate(node, a, isopen) {
     });
   });
 
-  var duration = scale(1, .2, 1) * 1000;
+  var duration = 200;
   a.animationHandle = setTimeout(function () {
     a.animationHandle = null;
     if (isopen)
@@ -977,24 +977,6 @@ function removeRow(xpos, ypos) {
   saveColumns();
 }
 
-// scales input value from [0,1,2] to [min,mid,max]
-function scale(value, mid, max, min) {
-  min = min || 0;
-  return value > 1 ?
-    mid + (value - 1) * (max - mid) :
-    min + value * (mid - min);
-}
-
-// gets rgb representation of hex color
-function hexToRgb(hex) {
-  hex = /[a-f\d]{6}/i.exec(hex);
-  var bigint = parseInt(hex, 16);
-  var r = (bigint >> 16) & 255;
-  var g = (bigint >> 8) & 255;
-  var b = bigint & 255;
-  return r + "," + g + "," + b;
-}
-
 loadColumns();
 
 // keyboard shortcuts
@@ -1018,16 +1000,13 @@ window.onresize = function (event) {
 document.getElementById('saveButton').onclick = function () {
   var name = document.getElementById('edit_bookmark_name');
   var url = document.getElementById('edit_bookmark_url');
-  if (!name?.dataset?.id) {
-    return
-  }
+  if (!name?.dataset?.id) return;
 
   chrome.bookmarks.update(name.dataset.id, {
     'title': name.value,
     'url': url.href
   }, (result) => {
     localStorage.removeItem('open.' + result.id);
-    console.log(result);
     loadColumns();
   });
 
