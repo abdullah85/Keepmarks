@@ -16,10 +16,7 @@
   "permissions": [
     "bookmarks",
     "favicon",
-    "topSites",
-    "tabs",
-    "fontSettings",
-    "sessions"
+    "tabs"
   ],
   "optional_host_permissions": [
     "file:///"
