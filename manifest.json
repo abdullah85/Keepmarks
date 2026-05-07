@@ -1,7 +1,7 @@
 {
   "name": "Keepmarks",
   "short_name": "Keepmarks",
-  "version": "0.0.0.1",
+  "version": "0.1.0.0",
   "manifest_version": 3,
   "description": "A convenient interface to organize your Bookmarks.",
   "icons": {
